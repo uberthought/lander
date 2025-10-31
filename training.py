@@ -1,3 +1,4 @@
+from critic import CriticModel
 import numpy as np
 import argparse
 
@@ -6,7 +7,7 @@ from ReplayBuffer import ReplayBuffer
 
 def main():
     parser = argparse.ArgumentParser(description="Live training for the LunarLander-v2 environment.")
-    parser.add_argument("--episodes", type=int, default=128, help="Number of training episodes")
+    parser.add_argument("--episodes", type=int, default=8, help="Number of training episodes")
     parser.add_argument('--discount-factor', type=float, default=0.95, help='Discount factor for future rewards')
     parser.add_argument('--sample-size', type=int, default=18, help='Number of samples for training')
     episodes = parser.parse_args().episodes
@@ -16,15 +17,20 @@ def main():
     np.set_printoptions(formatter={'float': lambda x: "{0:+0.4f}".format(x)})
 
     replay_buffer = ReplayBuffer(state_shape=(9,))
-    model = ActorModel(discount_factor=discount_factor)
+    actor_model = ActorModel(discount_factor=discount_factor)
+    critic_model = CriticModel(discount_factor=discount_factor)
+    actor_model.set_critic_model(critic_model)
+    critic_model.set_actor_model(actor_model)
 
     for i in range(episodes):
-        print(f"Training iteration {i} discount_factor={model.discount_factor}...")
+        print(f"Training iteration {i} discount_factor={actor_model.discount_factor}...")
         training_sample = replay_buffer.sample(2 ** sample_size)
         # training_sample = replay_buffer
-        model.train(training_sample)
+        actor_model.train(training_sample)
+        critic_model.train(training_sample)
 
-    model.save()
+    actor_model.save()
+    critic_model.save()
 
 if __name__ == "__main__":
     main()

@@ -1,3 +1,4 @@
+from critic import CriticModel
 import gymnasium as gym
 from gymnasium.wrappers import RecordVideo
 import numpy as np
@@ -12,7 +13,7 @@ from observation import Observation, calculate_value
 from actor import ActorModel
 from ReplayBuffer import ReplayBuffer
 
-def train(env, model: ActorModel, episodes, train_every_n_episodes, video_folder):
+def train(env, actor_model: ActorModel, critic_model: CriticModel, episodes, train_every_n_episodes, video_folder):
     # Main long-term buffer (persistent) and recent buffer for on-policy-ish updates
     # State shape is 9: 8 from LunarLander-v2 + 1 for done flag
     replay_buffer = ReplayBuffer(state_shape=(9,))
@@ -41,7 +42,7 @@ def train(env, model: ActorModel, episodes, train_every_n_episodes, video_folder
 
         while not done and not truncated:
             t += 1
-            action, prediction = model.get_optimal_action(obs)
+            action, prediction = actor_model.get_optimal_action(obs)
 
             # randomly explore 5% of the time
             if np.random.rand() < 0.05:
@@ -100,11 +101,13 @@ def train(env, model: ActorModel, episodes, train_every_n_episodes, video_folder
             sample_len = len(replay_buffer0) * 16
             replay_buffer0 = list(replay_buffer0)
             for k in range(32):
-                print(f"Training iteration {k} discount_factor={model.discount_factor}...")
+                print(f"Training iteration {k} discount_factor={actor_model.discount_factor}...")
                 training_sample = replay_buffer.sample(sample_len) + replay_buffer0
-                model.train(training_sample)
+                actor_model.train(training_sample)
+                critic_model.train(training_sample)
 
-            model.save()
+            actor_model.save()
+            critic_model.save()
 
             replay_buffer0 = deque(maxlen=40000)
             # Autosave observations
@@ -127,9 +130,12 @@ def main():
 
     env = gym.make("LunarLander-v2", render_mode="rgb_array")
     env = RecordVideo(env, video_folder="./videos", episode_trigger=lambda x: True, disable_logger=True)
-    model = ActorModel(discount_factor=discount_factor)
+    actor_model = ActorModel(discount_factor=discount_factor)
+    critic_model = CriticModel(discount_factor=discount_factor)
+    actor_model.set_critic_model(critic_model)
+    critic_model.set_actor_model(actor_model)
 
-    train(env, model, episodes, train_every, video_folder="./videos")
+    train(env, actor_model, critic_model, episodes, train_every, video_folder="./videos")
 
     env.close()
 

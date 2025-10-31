@@ -23,6 +23,9 @@ class ActorModel:
 
         self.model = self._load_model() or self._create_model()
 
+    def set_critic_model(self, critic_model):
+        self.critic_model = critic_model
+
     def _create_model(self):
         """Creates a new actor model."""
 
@@ -36,12 +39,12 @@ class ActorModel:
             x = Dense(self.nodes, activation='leaky_relu')(x)
             x = Dense(self.nodes)(x)
             x = x + skip
-        x = Dense(self.num_actions, activation='sigmoid')(x)
+        x = Dense(self.num_actions, activation='softmax')(x)
         output = x
 
         model = Model(inputs=input, outputs=output)
         optimizer = legacy_optimizers.Adam()
-        model.compile(optimizer=optimizer, loss='mse')
+        model.compile(optimizer=optimizer, loss='categorical_crossentropy')
         return model
 
 
@@ -54,37 +57,23 @@ class ActorModel:
 
     def train(self, observations):
         """Trains the actor model."""
-        actions_1 = tf.convert_to_tensor([obs.action for obs in observations], dtype=np.float32)
-        dones_1 = tf.convert_to_tensor([obs.next_state[-1] for obs in observations], dtype=np.float32)
 
         states_0 = tf.convert_to_tensor([obs.state for obs in observations], dtype=tf.float32)
-        states_1 = tf.convert_to_tensor([obs.next_state for obs in observations], dtype=tf.float32)
-        values_1 = calculate_value(states_1)
-        values_1 = tf.reshape(values_1, (-1, 1))
         sensors_0 = states_0[:, :8]
+
+        states_1 = tf.convert_to_tensor([obs.next_state for obs in observations], dtype=tf.float32)
         sensors_1 = states_1[:, :8]
+        sensors_1_tiled = tf.repeat(sensors_1, self.num_actions, axis=0)  # shape: (num_obs * OUTPUT_DIM, sensor_dim)
 
-        p_rewards_0 = self.model.predict(sensors_0, batch_size=2**14, verbose=0)
-        p_rewards_1 = self.model.predict(sensors_1, batch_size=2**14, verbose=0)
+        actions_onehot_tiled = tf.one_hot(tf.tile(tf.range(self.num_actions), [len(observations)]), self.num_actions) # shape: (num_obs * OUTPUT_DIM, OUTPUT_DIM)
 
-        # Vectorized Q-value update
-        q_values_1 = tf.reduce_max(p_rewards_1, axis=1)
-        q_values_1 = tf.reshape(q_values_1, (-1, 1))
+        predicted_rewards = self.critic_model.model.predict([sensors_1_tiled, actions_onehot_tiled], batch_size=2**14, verbose=0)
+        predicted_rewards = tf.reshape(predicted_rewards, (len(observations), self.num_actions))
 
-        dones = tf.convert_to_tensor(dones_1, dtype=tf.float32)
-        dones = tf.reshape(dones, (-1, 1))
-        not_dones = 1 - dones
+        predicted_actions = tf.argmax(predicted_rewards, axis=1)
+        best_actions = tf.one_hot(predicted_actions, self.num_actions)
 
-        current_values = (1 - self.discount_factor) * values_1
-        future_values = self.discount_factor * q_values_1
-
-        values = (current_values + future_values) * not_dones + values_1 * dones
-
-        indices = tf.stack([tf.range(tf.shape(actions_1)[0], dtype=tf.int32), 
-                    tf.cast(actions_1, tf.int32)], axis=1)
-        p_rewards_0 = tf.tensor_scatter_nd_update(p_rewards_0, indices, tf.squeeze(values))
-
-        self.model.fit(sensors_0, p_rewards_0, batch_size=2**14, epochs=4, verbose=0)
+        self.model.fit(sensors_0, best_actions, batch_size=2**15, epochs=4, verbose=0)
 
 
     def save(self):
