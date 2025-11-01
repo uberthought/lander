@@ -18,7 +18,7 @@ class CriticModel:
         # discount factor for future rewards
         self.discount_factor = discount_factor
         self.nodes = self.input_dim * 16
-        self.layers = 1
+        self.layers = 8
 
         self.model = self._load_model() or self._create_model()
 
@@ -44,7 +44,7 @@ class CriticModel:
 
         model = Model(inputs=[input_state, input_action], outputs=output)
         optimizer = legacy_optimizers.Adam()
-        model.compile(optimizer=optimizer, loss='mse')
+        model.compile(optimizer=optimizer, loss='binary_crossentropy')
         return model
 
 
@@ -96,6 +96,13 @@ class CriticModel:
         indices = tf.where(tf.equal(dones, 1.0))
         values = tf.tensor_scatter_nd_update(values, indices, tf.gather_nd(values_1, indices))
 
+        values = tf.tensor_scatter_nd_update(values, done_indices, tf.gather_nd(values_1, done_indices))
+        # print the first 10 values where done is true
+        done_indices = tf.reshape(done_indices, (-1,))
+        print(values[done_indices][0:10])
+        exit()
+
+
         self.model.fit([sensors_0, actions_hot], values, batch_size=2**14, epochs=4, verbose=0)
 
 
@@ -116,18 +123,3 @@ class CriticModel:
                 os.remove(tmp_path)
             raise
 
-
-    # def get_optimal_action(self, obs):
-    #     """Gets the optimal action for a given observation."""
-
-    #     sensors = obs[:8]
-    #     sensors = tf.convert_to_tensor([sensors], dtype=tf.float32)
-
-    #     prediction0 = self.model.predict(sensors, verbose=0)[0]
-    #     prediction0 = tf.convert_to_tensor(prediction0, dtype=tf.float32)
-
-    #     # greedy action selection
-    #     action = tf.argmax(prediction0)
-    #     action = int(action.numpy())
-
-    #     return action, prediction0

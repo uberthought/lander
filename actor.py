@@ -19,7 +19,7 @@ class ActorModel:
         # discount factor for future rewards
         self.discount_factor = discount_factor
         self.nodes = self.input_dim * 16
-        self.layers = 1
+        self.layers = 2
 
         self.model = self._load_model() or self._create_model()
 
@@ -104,7 +104,11 @@ class ActorModel:
         prediction0 = tf.convert_to_tensor(prediction0, dtype=tf.float32)
 
         # greedy action selection
-        action = tf.argmax(prediction0)
-        action = int(action.numpy())
+        # action = tf.argmax(prediction0)
+        # action = int(action.numpy())
+
+        # probabilistic action selection based on prediction0
+        action = tf.random.categorical(tf.math.log([prediction0]), num_samples=1)
+        action = int(action.numpy()[0][0])
 
         return action, prediction0

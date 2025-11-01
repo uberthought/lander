@@ -45,10 +45,18 @@ def train(env, actor_model: ActorModel, critic_model: CriticModel, episodes, tra
             action, prediction = actor_model.get_optimal_action(obs)
 
             # randomly explore 5% of the time
-            if np.random.rand() < 0.05:
-                action = np.random.randint(0, 4)
+            # if np.random.rand() < 0.05:
+            #     action = np.random.randint(0, 4)
 
             next_obs, _, done, truncated, _ = env.step(action)
+
+            value1 = calculate_value(next_obs).numpy()[0]
+
+            # if legs are down, consider episode done
+            # if next_obs[6] == 1 and next_obs[7] == 1:
+            #     while not done:
+            #         next_obs, _, done, truncated, _ = env.step(0)
+            #     done = True
 
             if done:
                 # use the sensors from the last observation and the legs from the current observation
@@ -69,11 +77,18 @@ def train(env, actor_model: ActorModel, critic_model: CriticModel, episodes, tra
             left_thruster_emoji = "◀"
             no_op_emoji = " "
 
-            rocket = no_op_emoji if action == 0 else right_thruster_emoji if action == 1 else main_thruster_emoji if action == 2 else left_thruster_emoji
-            value1 = calculate_value(next_obs).numpy()[0]
-            value0 = calculate_value(obs).numpy()[0]
-            delta = value1 - value0
-            print(f"Episode: {episode+1}/{episodes}, Step: {t}, Value: {value1:.4f}, Rocket: {rocket}, prediction: {prediction}, Delta: {delta:.4f}")
+            # rocket = no_op_emoji if action == 0 else right_thruster_emoji if action == 1 else main_thruster_emoji if action == 2 else left_thruster_emoji
+            # print(f"Episode: {episode+1}/{episodes}, Step: {t}, Value: {value1:.4f}, Rocket: {rocket}, prediction: {prediction}, Delta: {delta:.4f}")
+            actor_prediction = actor_model.model.predict(np.array([obs[:8]]), verbose=0)[0]
+
+            # get critic prediction for all possible actions
+            actions = np.arange(critic_model.num_actions)
+            actions_onehot = tf.one_hot(actions, critic_model.num_actions)
+            sensors_tiled = tf.repeat(np.array([obs[:8]]), critic_model.num_actions, axis=0)
+            critic_predictions = critic_model.model.predict([sensors_tiled, actions_onehot], verbose=0).flatten()
+
+            print(f"value: {value1:.4f}  critic: {critic_predictions}  actor: {actor_prediction}")
+
 
             prev_obs = obs
             obs = next_obs
@@ -98,7 +113,8 @@ def train(env, actor_model: ActorModel, critic_model: CriticModel, episodes, tra
         # if it's time to train the model, do so
 
         if do_training:
-            sample_len = len(replay_buffer0) * 16
+            # sample_len = len(replay_buffer0) * 16
+            sample_len = min(replay_buffer.size, 2 ** 10)
             replay_buffer0 = list(replay_buffer0)
             for k in range(32):
                 print(f"Training iteration {k} discount_factor={actor_model.discount_factor}...")
