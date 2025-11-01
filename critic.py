@@ -96,13 +96,6 @@ class CriticModel:
         indices = tf.where(tf.equal(dones, 1.0))
         values = tf.tensor_scatter_nd_update(values, indices, tf.gather_nd(values_1, indices))
 
-        values = tf.tensor_scatter_nd_update(values, done_indices, tf.gather_nd(values_1, done_indices))
-        # print the first 10 values where done is true
-        done_indices = tf.reshape(done_indices, (-1,))
-        print(values[done_indices][0:10])
-        exit()
-
-
         self.model.fit([sensors_0, actions_hot], values, batch_size=2**14, epochs=4, verbose=0)
 
 
