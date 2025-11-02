@@ -17,7 +17,7 @@ class ActorModel:
         # output is 4 values (action probabilities for each action)
         self.num_actions = 4
         self.nodes = self.input_dim * 16
-        self.layers = 1
+        self.layers = 2
 
         self.model = self._load_model() or self._create_model()
 
@@ -30,13 +30,15 @@ class ActorModel:
         input = Input(shape=(self.input_dim,))
 
         x = input
-        x = Dense(self.nodes)(x)
+        x = Dense(self.nodes, activation='leaky_relu')(x)
+        x = Dense(self.nodes, activation='leaky_relu')(x)
         for _ in range(self.layers):
             skip = x
             x = Dense(self.nodes, activation='leaky_relu')(x)
             x = Dense(self.nodes, activation='leaky_relu')(x)
-            x = Dense(self.nodes)(x)
             x = x + skip
+        x = Dense(self.nodes, activation='leaky_relu')(x)
+        x = Dense(self.nodes, activation='leaky_relu')(x)
         x = Dense(self.num_actions, activation='softmax')(x)
         output = x
 
