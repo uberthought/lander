@@ -10,14 +10,12 @@ from observation import calculate_value
 
 
 class ActorModel:
-    def __init__(self, discount_factor=0.95, model_path="models/actor_model.h5"):
+    def __init__(self, model_path="models/actor_model.h5"):
         self.model_path = model_path
-        # input is state values (translation, rotation, deltas)
-        self.input_dim = 8
+        # input is state values (translation, rotation, deltas, fuel)
+        self.input_dim = 10
         # output is 4 values (action probabilities for each action)
         self.num_actions = 4
-        # discount factor for future rewards
-        self.discount_factor = discount_factor
         self.nodes = self.input_dim * 16
         self.layers = 2
 
@@ -59,11 +57,8 @@ class ActorModel:
         """Trains the actor model."""
 
         states_0 = tf.convert_to_tensor([obs.state for obs in observations], dtype=tf.float32)
-        sensors_0 = states_0[:, :8]
-
         states_1 = tf.convert_to_tensor([obs.next_state for obs in observations], dtype=tf.float32)
-        sensors_1 = states_1[:, :8]
-        sensors_1_tiled = tf.repeat(sensors_1, self.num_actions, axis=0)  # shape: (num_obs * OUTPUT_DIM, sensor_dim)
+        sensors_1_tiled = tf.repeat(states_1, self.num_actions, axis=0)  # shape: (num_obs * OUTPUT_DIM, sensor_dim)
 
         actions_onehot_tiled = tf.one_hot(tf.tile(tf.range(self.num_actions), [len(observations)]), self.num_actions) # shape: (num_obs * OUTPUT_DIM, OUTPUT_DIM)
 
@@ -73,7 +68,7 @@ class ActorModel:
         predicted_actions = tf.argmax(predicted_rewards, axis=1)
         best_actions = tf.one_hot(predicted_actions, self.num_actions)
 
-        self.model.fit(sensors_0, best_actions, batch_size=2**15, epochs=4, verbose=0)
+        self.model.fit(states_0, best_actions, batch_size=2**15, epochs=8, verbose=0)
 
 
     def save(self):
@@ -97,8 +92,7 @@ class ActorModel:
     def get_optimal_action(self, obs):
         """Gets the optimal action for a given observation."""
 
-        sensors = obs[:8]
-        sensors = tf.convert_to_tensor([sensors], dtype=tf.float32)
+        sensors = tf.convert_to_tensor([obs], dtype=tf.float32)
 
         prediction0 = self.model.predict(sensors, verbose=0)[0]
         prediction0 = tf.convert_to_tensor(prediction0, dtype=tf.float32)

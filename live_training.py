@@ -16,7 +16,7 @@ from ReplayBuffer import ReplayBuffer
 def train(env, actor_model: ActorModel, critic_model: CriticModel, episodes, train_every_n_episodes, video_folder):
     # Main long-term buffer (persistent) and recent buffer for on-policy-ish updates
     # State shape is 9: 8 from LunarLander-v2 + 1 for done flag
-    replay_buffer = ReplayBuffer(state_shape=(9,))
+    replay_buffer = ReplayBuffer(state_shape=(10,))
     replay_buffer0 = deque(maxlen=40000)
 
     # remove the videos folder
@@ -33,9 +33,12 @@ def train(env, actor_model: ActorModel, critic_model: CriticModel, episodes, tra
 
         obs, _ = env.reset()
         obs = np.array(obs, dtype=np.float32)
-        obs = np.append(obs, 0)  # not done
-        prev_obs = obs
+        # obs = np.append(obs, 0)  # not done and fuel level
+        # obs = np.append(obs, 1)
+        obs = np.concatenate((obs, [1.0, 0.0]))  # fuel level and not done
 
+        fuel = 1000
+    
         #########
         # Live testing loop start
         #########
@@ -44,53 +47,48 @@ def train(env, actor_model: ActorModel, critic_model: CriticModel, episodes, tra
             t += 1
             action, prediction = actor_model.get_optimal_action(obs)
 
-            # randomly explore 5% of the time
-            # if np.random.rand() < 0.05:
-            #     action = np.random.randint(0, 4)
-
             next_obs, _, done, truncated, _ = env.step(action)
 
-            value1 = calculate_value(next_obs).numpy()[0]
+            # if the action is not to do nothing, decrease fuel
+            if action != 0:
+                fuel -= 1
 
             # if legs are down, consider episode done
-            # if next_obs[6] == 1 and next_obs[7] == 1:
-            #     while not done:
-            #         next_obs, _, done, truncated, _ = env.step(0)
-            #     done = True
-
-            if done:
-                # use the sensors from the last observation and the legs from the current observation
-                next_obs = np.append(obs[:6], next_obs[6:8])
+            legs_down = next_obs[6] == 1 and next_obs[7] == 1
+            if legs_down:
+                # print(next_obs)
+                while not done and not truncated:
+                    _, _, done, truncated, _ = env.step(0)
+                done = True
 
             done = done or truncated
 
             next_obs = np.array(next_obs, dtype=np.float32)
-            next_obs = np.append(next_obs, 1 if done else 0)
-            transition = Observation(prev_obs, obs, action, next_obs)
+            # add the fuel level and done to the observation
+            next_obs = np.concatenate((next_obs, [fuel / 1000.0, 1.0 if done else 0.0]))
 
-            if prev_obs is not None:
-                replay_buffer.add(transition)
-                replay_buffer0.append(transition)
+            transition = Observation(obs, action, next_obs)
 
-            main_thruster_emoji = "▼"
-            right_thruster_emoji = "▶"
-            left_thruster_emoji = "◀"
-            no_op_emoji = " "
+            replay_buffer.add(transition)
+            replay_buffer0.append(transition)
 
+            value1 = calculate_value(next_obs).numpy()[0]
+
+            # main_thruster_emoji = "▼"
+            # right_thruster_emoji = "▶"
+            # left_thruster_emoji = "◀"
+            # no_op_emoji = " "
             # rocket = no_op_emoji if action == 0 else right_thruster_emoji if action == 1 else main_thruster_emoji if action == 2 else left_thruster_emoji
-            # print(f"Episode: {episode+1}/{episodes}, Step: {t}, Value: {value1:.4f}, Rocket: {rocket}, prediction: {prediction}, Delta: {delta:.4f}")
-            actor_prediction = actor_model.model.predict(np.array([obs[:8]]), verbose=0)[0]
+            # print(f"Episode: {episode+1}/{episodes}, Step: {t}, Value: {value1:.4f}, Rocket: {rocket}, Prediction: {prediction}")
 
-            # get critic prediction for all possible actions
+            actor_prediction = actor_model.model.predict(obs.reshape((1, -1)), verbose=0)[0]
             actions = np.arange(critic_model.num_actions)
             actions_onehot = tf.one_hot(actions, critic_model.num_actions)
-            sensors_tiled = tf.repeat(np.array([obs[:8]]), critic_model.num_actions, axis=0)
+            sensors_tiled = tf.repeat(obs.reshape((1, -1)), critic_model.num_actions, axis=0)
             critic_predictions = critic_model.model.predict([sensors_tiled, actions_onehot], verbose=0).flatten()
-
             print(f"value: {value1:.4f}  critic: {critic_predictions}  actor: {actor_prediction}")
 
 
-            prev_obs = obs
             obs = next_obs
 
         #########
@@ -113,11 +111,11 @@ def train(env, actor_model: ActorModel, critic_model: CriticModel, episodes, tra
         # if it's time to train the model, do so
 
         if do_training:
-            # sample_len = len(replay_buffer0) * 16
-            sample_len = min(replay_buffer.size, 2 ** 10)
+            sample_len = len(replay_buffer0) * 16
+            # sample_len = min(replay_buffer.size, 2 ** 10)
             replay_buffer0 = list(replay_buffer0)
             for k in range(32):
-                print(f"Training iteration {k} discount_factor={actor_model.discount_factor}...")
+                print(f"Training iteration {k} discount_factor={critic_model.discount_factor}...")
                 training_sample = replay_buffer.sample(sample_len) + replay_buffer0
                 actor_model.train(training_sample)
                 critic_model.train(training_sample)
@@ -146,7 +144,7 @@ def main():
 
     env = gym.make("LunarLander-v2", render_mode="rgb_array")
     env = RecordVideo(env, video_folder="./videos", episode_trigger=lambda x: True, disable_logger=True)
-    actor_model = ActorModel(discount_factor=discount_factor)
+    actor_model = ActorModel()
     critic_model = CriticModel(discount_factor=discount_factor)
     actor_model.set_critic_model(critic_model)
     critic_model.set_actor_model(actor_model)

@@ -8,7 +8,7 @@ class ReplayBuffer:
     """Memory-mapped cyclic buffer with automatic disk persistence.
 
     Stores observations as structured arrays in a memory-mapped file.
-    Each observation should be a tuple/namedtuple with (prev_state, state, action, next_state, done).
+    Each observation should be a tuple/namedtuple with (state, action, next_state, done).
     """
 
     def __init__(self, maxlen: int | None = None, filename: str | None = None, state_shape: Tuple[int, ...] = None, compress: bool = True):
@@ -41,11 +41,9 @@ class ReplayBuffer:
         state_dim = np.prod(self.state_shape) if isinstance(self.state_shape, tuple) else self.state_shape
         
         dtype = np.dtype([
-            ('prev_state', np.float32, self.state_shape),
             ('state', np.float32, self.state_shape),
             ('action', np.float32),
-            ('next_state', np.float32, self.state_shape),
-            ('done', np.float32),
+            ('next_state', np.float32, self.state_shape)
         ])
         
         self.buffer = np.memmap(
@@ -59,11 +57,9 @@ class ReplayBuffer:
     def _open_memmap(self, mode='r+'):
         """Open existing memory-mapped file."""
         dtype = np.dtype([
-            ('prev_state', np.float32, self.state_shape),
             ('state', np.float32, self.state_shape),
             ('action', np.float32),
-            ('next_state', np.float32, self.state_shape),
-            ('done', np.float32),
+            ('next_state', np.float32, self.state_shape)
         ])
         
         self.buffer = np.memmap(
@@ -109,24 +105,21 @@ class ReplayBuffer:
     def add(self, observation):
         """Add an observation to the buffer.
         
-        observation should be a tuple/namedtuple with (prev_state, state, action, next_state, done)
+        observation should be a tuple/namedtuple with (state, action, next_state)
         or have those attributes.
         """
         # Extract fields from observation
         if hasattr(observation, '_fields'):  # namedtuple
-            prev_state = observation.prev_state
             state = observation.state
             action = observation.action
             next_state = observation.next_state
-            done = observation.done if hasattr(observation, 'done') else False
         elif isinstance(observation, (tuple, list)):
-            prev_state, state, action, next_state = observation[:4]
-            done = observation[4] if len(observation) > 4 else False
+            state, action, next_state = observation[:3]
         else:
-            raise ValueError("Observation must be tuple/namedtuple with (prev_state, state, action, next_state, done)")
+            raise ValueError("Observation must be tuple/namedtuple with (state, action, next_state, done)")
 
         # Write to buffer
-        self.buffer[self.write_pos] = (prev_state, state, action, next_state, done)
+        self.buffer[self.write_pos] = (state, action, next_state)
         
         # Update circular buffer pointers
         self.write_pos = (self.write_pos + 1) % self.maxlen
@@ -159,14 +152,12 @@ class ReplayBuffer:
             obs = self.buffer[i]
             # Create a simple object to mimic namedtuple behavior
             class Observation:
-                def __init__(self, prev_state, state, action, next_state, done):
-                    self.prev_state = prev_state
+                def __init__(self, state, action, next_state):
                     self.state = state
                     self.action = action
                     self.next_state = next_state
-                    self.done = done
 
-            samples.append(Observation(obs['prev_state'], obs['state'], obs['action'], obs['next_state'], obs['done']))
+            samples.append(Observation(obs['state'], obs['action'], obs['next_state']))
 
         return samples
 
@@ -179,14 +170,12 @@ class ReplayBuffer:
         for i in valid_indices:
             obs = self.buffer[i]
             class Observation:
-                def __init__(self, prev_state, state, action, next_state, done):
-                    self.prev_state = prev_state
+                def __init__(self, state, action, next_state):
                     self.state = state
                     self.action = action
                     self.next_state = next_state
-                    self.done = done
 
-            yield Observation(obs['prev_state'], obs['state'], obs['action'], obs['next_state'], obs['done'])
+            yield Observation(obs['state'], obs['action'], obs['next_state'], obs['done'])
 
     # --- persistence ---
     def save(self, path: str | None = None):
@@ -204,26 +193,22 @@ class ReplayBuffer:
 
     # --- utilities ---
     def to_arrays(self):
-        """Return (states, actions, next_states, dones) as numpy arrays."""
+        """Return (states, actions, next_states) as numpy arrays."""
         if self.size == 0:
             return (
                 np.empty((0,) + self.state_shape, dtype=np.float32),
-                np.empty((0,) + self.state_shape, dtype=np.float32),
                 np.empty((0,), dtype=np.float32),
                 np.empty((0,) + self.state_shape, dtype=np.float32),
-                np.empty((0,), dtype=np.float32),
             )
         
         valid_indices = self._get_valid_indices()
         valid_data = self.buffer[valid_indices]
 
-        prev_states = valid_data['prev_state']
         states = valid_data['state']
         actions = valid_data['action']
         next_states = valid_data['next_state']
-        dones = valid_data['done']
 
-        return prev_states, states, actions, next_states, dones
+        return states, actions, next_states
 
     def shrink(self, keep_last: int):
         """Keep only the most recent N observations (in-place)."""

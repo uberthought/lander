@@ -13,8 +13,8 @@ class CriticModel:
     def __init__(self, discount_factor=0.95, model_path="models/critic_model.h5"):
         self.model_path = model_path
         self.num_actions = 4
-        # input is state values (translation, rotation, deltas, action one-hot)
-        self.input_dim = 8
+        # input is state values (translation, rotation, deltas, legs, fuel)
+        self.input_dim = 10
         # discount factor for future rewards
         self.discount_factor = discount_factor
         self.nodes = self.input_dim * 16
@@ -63,8 +63,6 @@ class CriticModel:
         dones = tf.convert_to_tensor([obs.next_state[-1] for obs in observations], dtype=np.float32)
         states_0 = tf.convert_to_tensor([obs.state for obs in observations], dtype=tf.float32)
         states_1 = tf.convert_to_tensor([obs.next_state for obs in observations], dtype=tf.float32)
-        sensors_0 = states_0[:, :8]
-        sensors_1 = states_1[:, :8]
 
         # one hot encode the actions
         actions_hot = tf.one_hot(actions.numpy(), self.num_actions)
@@ -74,13 +72,13 @@ class CriticModel:
         values_1 = tf.reshape(values_1, (-1, 1))
 
         # get the predicted actions for the next states
-        p_actions = self.actor_model.model.predict(sensors_1, batch_size=2**15, verbose=0)
+        p_actions = self.actor_model.model.predict(states_1, batch_size=2**15, verbose=0)
 
         # convert predicted actions to one hot
         p_actions_hot = tf.one_hot(tf.argmax(p_actions, axis=1), self.num_actions)
 
         # get the predicted values for the next state-action pairs
-        p_values_2 = self.model.predict([sensors_1, p_actions_hot], batch_size=2**15, verbose=0)
+        p_values_2 = self.model.predict([states_1, p_actions_hot], batch_size=2**15, verbose=0)
         p_values_2 = tf.reshape(p_values_2, (-1, 1))
 
         # compute the target values
@@ -96,7 +94,34 @@ class CriticModel:
         indices = tf.where(tf.equal(dones, 1.0))
         values = tf.tensor_scatter_nd_update(values, indices, tf.gather_nd(values_1, indices))
 
-        self.model.fit([sensors_0, actions_hot], values, batch_size=2**14, epochs=4, verbose=0)
+        # # split into done and not done
+
+        # # get the not done states
+        # not_done_mask = tf.equal(tf.squeeze(dones), 0.0)
+        # sensors_0_not_done = tf.boolean_mask(states_0, not_done_mask)
+        # values_not_done = tf.boolean_mask(values, not_done_mask)
+        # actions_not_done = tf.boolean_mask(actions_hot, not_done_mask)
+
+        # # get the done states
+        # done_mask = tf.equal(tf.squeeze(dones), 1.0)
+        # sensors_0_done = tf.boolean_mask(states_0, done_mask)
+        # values_done = tf.boolean_mask(values, done_mask)
+        # # don't use actions for done states
+        # # actions_done = tf.boolean_mask(actions_hot, done_mask)
+
+        # # apply the same value for sensors to every possible action for done states
+        # num_done_states = tf.shape(sensors_0_done)[0]
+        # sensors_0_done_tiled = tf.repeat(sensors_0_done, self.num_actions, axis=0)
+        # values_done_tiled = tf.repeat(values_done, self.num_actions, axis=0)
+        # all_actions = tf.eye(self.num_actions)
+        # actions_done_tiled = tf.tile(all_actions, [num_done_states, 1])
+
+        # # combine done and not done
+        # states_0 = tf.concat([sensors_0_not_done, sensors_0_done_tiled], axis=0)
+        # values = tf.concat([values_not_done, values_done_tiled], axis=0)
+        # actions_hot = tf.concat([actions_not_done, actions_done_tiled], axis=0)
+
+        self.model.fit([states_0, actions_hot], values, batch_size=2**14, epochs=8, verbose=0)
 
 
     def save(self):
