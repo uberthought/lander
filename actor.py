@@ -18,9 +18,15 @@ class ActorNet(nn.Module):
         self.num_actions = num_actions
         self.nodes = nodes
         self.layers = layers
+        
 
-        self.fc1 = nn.Linear(input_dim, nodes)
-        self.fc2 = nn.Linear(nodes, nodes)
+        self.input = nn.Sequential(
+            nn.Linear(self.input_dim, nodes),
+            nn.LeakyReLU(),
+            nn.Linear(nodes, nodes),
+            nn.LeakyReLU()
+        )
+
         self.skip_layers = nn.ModuleList([
             nn.Sequential(
                 nn.Linear(nodes, nodes),
@@ -29,20 +35,23 @@ class ActorNet(nn.Module):
                 nn.LeakyReLU()
             ) for _ in range(layers)
         ])
-        self.fc3 = nn.Linear(nodes, nodes)
-        self.fc4 = nn.Linear(nodes, nodes)
-        self.out = nn.Linear(nodes, num_actions)
+
+        self.output = nn.Sequential(
+            nn.Linear(nodes, nodes),
+            nn.LeakyReLU(),
+            nn.Linear(nodes, nodes),
+            nn.LeakyReLU(),
+            nn.Linear(nodes, num_actions),
+            nn.Softmax(dim=-1)
+        )
 
     def forward(self, x):
-        x = F.leaky_relu(self.fc1(x))
-        x = F.leaky_relu(self.fc2(x))
+        x = self.input(x)
         for skip_layer in self.skip_layers:
             skip = x
             x = skip_layer(x)
             x = x + skip
-        x = F.leaky_relu(self.fc3(x))
-        x = F.leaky_relu(self.fc4(x))
-        x = F.softmax(self.out(x), dim=-1)
+        x = self.output(x)
         return x
 
 
@@ -52,10 +61,10 @@ class ActorModel:
         self.input_dim = 10
         self.num_actions = 4
         self.nodes = self.input_dim * 16
-        self.layers = 2
+        self.layers = 4
 
-        self.model = self._load_model() or self._create_model()
         self.device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+        self.model = self._load_model() or self._create_model()
         self.model.to(self.device)
         self.optimizer = optim.Adam(self.model.parameters())
         self.criterion = nn.MSELoss()
