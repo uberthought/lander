@@ -36,41 +36,15 @@ def calculate_value(obs):
     sensors = tf.abs(sensors)
     sensors = tf.clip_by_value(sensors, 0, 1)
     sensors = 1 - sensors
-
-    sensors = tf.clip_by_value(sensors, 0, 1)
+    # append the fuel level to the sensors
+    fuel = obs[:, 8:9]
+    sensors = tf.concat([sensors, fuel], axis=1)
     value = tf.reduce_prod(sensors, axis=1)
     leg0 = obs[:, 6]
     leg1 = obs[:, 7]
     leg_multiplier = (leg0 + leg1) / 2.0
     value = value * 0.7 + leg_multiplier * 0.3
 
-
-    # if len(obs.shape) == 2:
-    #     sensors = obs[:, :6]
-    #     sensors = sensors / tf.reshape(NORMALIZATION_FACTORS, [-1, 6])
-    # else:
-    #     sensors = obs[:6]
-    #     sensors = sensors / NORMALIZATION_FACTORS
-
-    # sensors = tf.abs(sensors)
-    # sensors = tf.clip_by_value(sensors, 0, 1)
-    # sensors = 1 - sensors
-
-    # if len(obs.shape) == 1:
-    #     sensors = tf.clip_by_value(sensors, 0, 1)
-    #     value = tf.reduce_prod(sensors)
-    #     leg0 = obs[6]
-    #     leg1 = obs[7]
-    #     leg_multiplier = (leg0 + leg1) / 2.0
-    #     value = value * 0.7 + leg_multiplier * 0.3
-    # else:
-    #     sensors = tf.clip_by_value(sensors, 0, 1)
-    #     value = tf.reduce_prod(sensors, axis=1)
-    #     leg0 = obs[:, 6]
-    #     leg1 = obs[:, 7]
-    #     leg_multiplier = (leg0 + leg1) / 2.0
-    #     value = value * 0.7 + leg_multiplier * 0.3
-
     return value
 
-Observation = namedtuple('Observation', ['prev_state', 'state', 'action', 'next_state'])
+Observation = namedtuple('Observation', ['state', 'action', 'next_state'])
