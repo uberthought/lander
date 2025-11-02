@@ -33,8 +33,7 @@ def train(env, actor_model: ActorModel, critic_model: CriticModel, episodes, tra
 
         obs, _ = env.reset()
         obs = np.array(obs, dtype=np.float32)
-        # obs = np.append(obs, 0)  # not done and fuel level
-        # obs = np.append(obs, 1)
+        # obs = np.append(obs, 0)  #  fuel level and not done
         obs = np.concatenate((obs, [1.0, 0.0]))  # fuel level and not done
 
         fuel = 1000
@@ -53,10 +52,18 @@ def train(env, actor_model: ActorModel, critic_model: CriticModel, episodes, tra
             if action != 0:
                 fuel -= 1
 
+            # if done, use the previous observation and add the legs and fuel level
+            if done or truncated:
+                next_obs[0] = obs[0]
+                next_obs[1] = obs[1]
+                next_obs[2] = obs[2]
+                next_obs[3] = obs[3]
+                next_obs[4] = obs[4]
+                next_obs[5] = obs[5]
+
             # if legs are down, consider episode done
-            legs_down = next_obs[6] == 1 and next_obs[7] == 1
+            legs_down = next_obs[6] == 1 and next_obs[7] == 1 and obs[6] == 1 and obs[7] == 1
             if legs_down:
-                # print(next_obs)
                 while not done and not truncated:
                     _, _, done, truncated, _ = env.step(0)
                 done = True
@@ -74,19 +81,19 @@ def train(env, actor_model: ActorModel, critic_model: CriticModel, episodes, tra
 
             value1 = calculate_value(next_obs).numpy()[0]
 
-            # main_thruster_emoji = "▼"
-            # right_thruster_emoji = "▶"
-            # left_thruster_emoji = "◀"
-            # no_op_emoji = " "
-            # rocket = no_op_emoji if action == 0 else right_thruster_emoji if action == 1 else main_thruster_emoji if action == 2 else left_thruster_emoji
-            # print(f"Episode: {episode+1}/{episodes}, Step: {t}, Value: {value1:.4f}, Rocket: {rocket}, Prediction: {prediction}")
+            main_thruster_emoji = "▼"
+            right_thruster_emoji = "▶"
+            left_thruster_emoji = "◀"
+            no_op_emoji = " "
+            rocket = no_op_emoji if action == 0 else right_thruster_emoji if action == 1 else main_thruster_emoji if action == 2 else left_thruster_emoji
+            print(f"Episode: {episode+1}/{episodes}, Step: {t}, Value: {value1:.4f}, Rocket: {rocket}, Prediction: {prediction}")
 
-            actor_prediction = actor_model.model.predict(obs.reshape((1, -1)), verbose=0)[0]
-            actions = np.arange(critic_model.num_actions)
-            actions_onehot = tf.one_hot(actions, critic_model.num_actions)
-            sensors_tiled = tf.repeat(obs.reshape((1, -1)), critic_model.num_actions, axis=0)
-            critic_predictions = critic_model.model.predict([sensors_tiled, actions_onehot], verbose=0).flatten()
-            print(f"value: {value1:.4f}  critic: {critic_predictions}  actor: {actor_prediction}")
+            # actor_prediction = actor_model.model.predict(obs.reshape((1, -1)), verbose=0)[0]
+            # actions = np.arange(critic_model.num_actions)
+            # actions_onehot = tf.one_hot(actions, critic_model.num_actions)
+            # sensors_tiled = tf.repeat(obs.reshape((1, -1)), critic_model.num_actions, axis=0)
+            # critic_predictions = critic_model.model.predict([sensors_tiled, actions_onehot], verbose=0).flatten()
+            # print(f"value: {value1:.4f}  critic: {critic_predictions}  actor: {actor_prediction}")
 
 
             obs = next_obs
@@ -111,10 +118,9 @@ def train(env, actor_model: ActorModel, critic_model: CriticModel, episodes, tra
         # if it's time to train the model, do so
 
         if do_training:
-            sample_len = len(replay_buffer0) * 16
-            # sample_len = min(replay_buffer.size, 2 ** 10)
+            sample_len = len(replay_buffer0) * 8
             replay_buffer0 = list(replay_buffer0)
-            for k in range(32):
+            for k in range(64):
                 print(f"Training iteration {k} discount_factor={critic_model.discount_factor}...")
                 training_sample = replay_buffer.sample(sample_len) + replay_buffer0
                 actor_model.train(training_sample)

@@ -37,10 +37,6 @@ def calculate_value(obs):
     sensors = 1 - sensors
     # append the fuel level to the sensors
     fuel = obs[:, 8:9]
-
-    # for debugging set fuel to 1.0
-    fuel = tf.ones_like(fuel)
-
     sensors = tf.concat([sensors, fuel], axis=1)
     value = tf.reduce_prod(sensors, axis=1)
     leg0 = obs[:, 6]

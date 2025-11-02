@@ -30,13 +30,15 @@ class ActorModel:
         input = Input(shape=(self.input_dim,))
 
         x = input
-        x = Dense(self.nodes)(x)
+        x = Dense(self.nodes, activation='leaky_relu')(x)
+        x = Dense(self.nodes, activation='leaky_relu')(x)
         for _ in range(self.layers):
             skip = x
             x = Dense(self.nodes, activation='leaky_relu')(x)
             x = Dense(self.nodes, activation='leaky_relu')(x)
-            x = Dense(self.nodes)(x)
             x = x + skip
+        x = Dense(self.nodes, activation='leaky_relu')(x)
+        x = Dense(self.nodes, activation='leaky_relu')(x)
         x = Dense(self.num_actions, activation='softmax')(x)
         output = x
 
@@ -68,7 +70,7 @@ class ActorModel:
         predicted_actions = tf.argmax(predicted_rewards, axis=1)
         best_actions = tf.one_hot(predicted_actions, self.num_actions)
 
-        self.model.fit(states_0, best_actions, batch_size=2**15, epochs=8, verbose=0)
+        self.model.fit(states_0, best_actions, batch_size=2**15, epochs=4, verbose=0)
 
 
     def save(self):
@@ -101,8 +103,8 @@ class ActorModel:
         # action = tf.argmax(prediction0)
         # action = int(action.numpy())
 
-        # probabilistic action selection based on prediction0
-        action = tf.random.categorical(tf.math.log([prediction0]), num_samples=1)
-        action = int(action.numpy()[0][0])
+        # probabilistic action selection
+        action = np.random.choice(self.num_actions, p=prediction0.numpy())
+        action = int(action)
 
         return action, prediction0

@@ -18,7 +18,7 @@ class CriticModel:
         # discount factor for future rewards
         self.discount_factor = discount_factor
         self.nodes = self.input_dim * 16
-        self.layers = 8
+        self.layers = 4
 
         self.model = self._load_model() or self._create_model()
 
@@ -32,13 +32,15 @@ class CriticModel:
         input_action = Input(shape=(self.num_actions,))
 
         x = tf.concat([input_state, input_action], axis=-1)
-        x = Dense(self.nodes)(x)
+        x = Dense(self.nodes, activation='leaky_relu')(x)
+        x = Dense(self.nodes, activation='leaky_relu')(x)
         for _ in range(self.layers):
             skip = x
             x = Dense(self.nodes, activation='leaky_relu')(x)
             x = Dense(self.nodes, activation='leaky_relu')(x)
-            x = Dense(self.nodes)(x)
             x = x + skip
+        x = Dense(self.nodes, activation='leaky_relu')(x)
+        x = Dense(self.nodes, activation='leaky_relu')(x)
         x = Dense(1, activation='sigmoid')(x)
         output = x
 
@@ -121,7 +123,7 @@ class CriticModel:
         # values = tf.concat([values_not_done, values_done_tiled], axis=0)
         # actions_hot = tf.concat([actions_not_done, actions_done_tiled], axis=0)
 
-        self.model.fit([states_0, actions_hot], values, batch_size=2**14, epochs=8, verbose=0)
+        self.model.fit([states_0, actions_hot], values, batch_size=2**14, epochs=4, verbose=0)
 
 
     def save(self):
