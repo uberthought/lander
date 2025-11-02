@@ -64,7 +64,6 @@ def train(env, actor_model: ActorModel, critic_model: CriticModel, episodes, tra
             # if legs are down, consider episode done
             legs_down = next_obs[6] == 1 and next_obs[7] == 1 and obs[6] == 1 and obs[7] == 1
             if legs_down:
-                # print(next_obs)
                 while not done and not truncated:
                     _, _, done, truncated, _ = env.step(0)
                 done = True
