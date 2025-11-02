@@ -1,7 +1,7 @@
-from tensorflow.keras.models import Model, load_model  # type: ignore
-from tensorflow.keras.layers import Dense, Input  # type: ignore
-from tensorflow.keras.optimizers import legacy as legacy_optimizers  # type: ignore
-import tensorflow as tf
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
 import numpy as np
 import os
 import tempfile
@@ -9,83 +9,98 @@ import tempfile
 from observation import calculate_value
 
 
+
+# PyTorch Critic Model
+class CriticNet(nn.Module):
+    def __init__(self, input_dim, num_actions, nodes, layers):
+        super().__init__()
+        self.input_dim = input_dim
+        self.num_actions = num_actions
+        self.nodes = nodes
+        self.layers = layers
+
+        self.fc1 = nn.Linear(input_dim + num_actions, nodes)
+        self.fc2 = nn.Linear(nodes, nodes)
+        self.skip_layers = nn.ModuleList([
+            nn.Sequential(
+                nn.Linear(nodes, nodes),
+                nn.LeakyReLU(),
+                nn.Linear(nodes, nodes),
+                nn.LeakyReLU()
+            ) for _ in range(layers)
+        ])
+        self.fc3 = nn.Linear(nodes, nodes)
+        self.fc4 = nn.Linear(nodes, nodes)
+        self.out = nn.Linear(nodes, 1)
+
+    def forward(self, state, action):
+        x = torch.cat([state, action], dim=-1)
+        x = F.leaky_relu(self.fc1(x))
+        x = F.leaky_relu(self.fc2(x))
+        for skip_layer in self.skip_layers:
+            skip = x
+            x = skip_layer(x)
+            x = x + skip
+        x = F.leaky_relu(self.fc3(x))
+        x = F.leaky_relu(self.fc4(x))
+        x = torch.sigmoid(self.out(x))
+        return x
+
+
 class CriticModel:
-    def __init__(self, discount_factor=0.95, model_path="models/critic_model.h5"):
+    def __init__(self, discount_factor=0.95, model_path="models/critic_model.pt"):
         self.model_path = model_path
         self.num_actions = 4
-        # input is state values (translation, rotation, deltas, legs, fuel)
         self.input_dim = 10
-        # discount factor for future rewards
         self.discount_factor = discount_factor
         self.nodes = self.input_dim * 16
         self.layers = 4
 
+        self.device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
         self.model = self._load_model() or self._create_model()
+        self.model.to(self.device)
+        self.optimizer = optim.Adam(self.model.parameters())
+        self.criterion = nn.MSELoss()
 
     def set_actor_model(self, actor_model):
         self.actor_model = actor_model
 
     def _create_model(self):
-        """Creates a new critic model."""
-
-        input_state = Input(shape=(self.input_dim,))
-        input_action = Input(shape=(self.num_actions,))
-
-        x = tf.concat([input_state, input_action], axis=-1)
-        x = Dense(self.nodes, activation='leaky_relu')(x)
-        x = Dense(self.nodes, activation='leaky_relu')(x)
-        for _ in range(self.layers):
-            skip = x
-            x = Dense(self.nodes, activation='leaky_relu')(x)
-            x = Dense(self.nodes, activation='leaky_relu')(x)
-            x = x + skip
-        x = Dense(self.nodes, activation='leaky_relu')(x)
-        x = Dense(self.nodes, activation='leaky_relu')(x)
-        x = Dense(1, activation='sigmoid')(x)
-        output = x
-
-        model = Model(inputs=[input_state, input_action], outputs=output)
-        optimizer = legacy_optimizers.Adam()
-        model.compile(optimizer=optimizer, loss='binary_crossentropy')
-        return model
-
+        return CriticNet(self.input_dim, self.num_actions, self.nodes, self.layers)
 
     def _load_model(self):
-        """Loads the critic model from the specified path."""
         if os.path.exists(self.model_path):
-            return load_model(self.model_path)
+            model = CriticNet(self.input_dim, self.num_actions, self.nodes, self.layers)
+            model.load_state_dict(torch.load(self.model_path, map_location="cpu"))
+            return model
         return None
 
-
     def train(self, observations):
-        """Trains the critic model."""
-        
-        # extract the actions, dones, states, and sensors from observations
-        actions = tf.convert_to_tensor([obs.action for obs in observations], dtype=np.float32)
-        dones = tf.convert_to_tensor([obs.next_state[-1] for obs in observations], dtype=np.float32)
-        states_0 = tf.convert_to_tensor([obs.state for obs in observations], dtype=tf.float32)
-        states_1 = tf.convert_to_tensor([obs.next_state for obs in observations], dtype=tf.float32)
+        self.model.train()
+        actions = torch.tensor([int(obs.action) for obs in observations], dtype=torch.long, device=self.device)
+        dones = torch.tensor([obs.next_state[-1] for obs in observations], dtype=torch.float32, device=self.device)
 
-        # one hot encode the actions
-        actions_hot = tf.one_hot(actions.numpy(), self.num_actions)
+        states_0 = torch.tensor(np.array([obs.state for obs in observations]), dtype=torch.float32, device=self.device)
+        states_1 = torch.tensor(np.array([obs.next_state for obs in observations]), dtype=torch.float32, device=self.device)
+
+        actions_hot = F.one_hot(actions, num_classes=self.num_actions).float()
 
         # calculate the values for the next states
-        values_1 = calculate_value(states_1)
-        values_1 = tf.reshape(values_1, (-1, 1))
+        values_1_np = calculate_value(states_1.cpu().numpy())
+        values_1 = torch.tensor(values_1_np, dtype=torch.float32, device=self.device).view(-1, 1)
 
         # get the predicted actions for the next states
-        p_actions = self.actor_model.model.predict(states_1, batch_size=2**15, verbose=0)
-
-        # convert predicted actions to one hot
-        p_actions_hot = tf.one_hot(tf.argmax(p_actions, axis=1), self.num_actions)
+        with torch.no_grad():
+            p_actions_probs = self.actor_model.model(states_1)
+            p_actions = torch.argmax(p_actions_probs, dim=1)
+        p_actions_hot = F.one_hot(p_actions, num_classes=self.num_actions).float()
 
         # get the predicted values for the next state-action pairs
-        p_values_2 = self.model.predict([states_1, p_actions_hot], batch_size=2**15, verbose=0)
-        p_values_2 = tf.reshape(p_values_2, (-1, 1))
+        with torch.no_grad():
+            p_values_2 = self.model(states_1, p_actions_hot)
+        p_values_2 = p_values_2.view(-1, 1)
 
-        # compute the target values
-        dones = tf.convert_to_tensor(dones, dtype=tf.float32)
-        dones = tf.reshape(dones, (-1, 1))
+        dones = dones.view(-1, 1)
         not_dones = 1 - dones
 
         current_values = (1 - self.discount_factor) * values_1
@@ -93,48 +108,25 @@ class CriticModel:
 
         values = (current_values + future_values) * not_dones + values_1 * dones
 
-        indices = tf.where(tf.equal(dones, 1.0))
-        values = tf.tensor_scatter_nd_update(values, indices, tf.gather_nd(values_1, indices))
+        # For done indices, set values to values_1
+        done_indices = (dones == 1.0).nonzero(as_tuple=True)[0]
+        values[done_indices] = values_1[done_indices]
 
-        # # split into done and not done
-
-        # # get the not done states
-        # not_done_mask = tf.equal(tf.squeeze(dones), 0.0)
-        # sensors_0_not_done = tf.boolean_mask(states_0, not_done_mask)
-        # values_not_done = tf.boolean_mask(values, not_done_mask)
-        # actions_not_done = tf.boolean_mask(actions_hot, not_done_mask)
-
-        # # get the done states
-        # done_mask = tf.equal(tf.squeeze(dones), 1.0)
-        # sensors_0_done = tf.boolean_mask(states_0, done_mask)
-        # values_done = tf.boolean_mask(values, done_mask)
-        # # don't use actions for done states
-        # # actions_done = tf.boolean_mask(actions_hot, done_mask)
-
-        # # apply the same value for sensors to every possible action for done states
-        # num_done_states = tf.shape(sensors_0_done)[0]
-        # sensors_0_done_tiled = tf.repeat(sensors_0_done, self.num_actions, axis=0)
-        # values_done_tiled = tf.repeat(values_done, self.num_actions, axis=0)
-        # all_actions = tf.eye(self.num_actions)
-        # actions_done_tiled = tf.tile(all_actions, [num_done_states, 1])
-
-        # # combine done and not done
-        # states_0 = tf.concat([sensors_0_not_done, sensors_0_done_tiled], axis=0)
-        # values = tf.concat([values_not_done, values_done_tiled], axis=0)
-        # actions_hot = tf.concat([actions_not_done, actions_done_tiled], axis=0)
-
-        self.model.fit([states_0, actions_hot], values, batch_size=2**14, epochs=4, verbose=0)
-
+        # Train for 4 epochs
+        for _ in range(4):
+            self.optimizer.zero_grad()
+            outputs = self.model(states_0, actions_hot)
+            loss = self.criterion(outputs, values)
+            loss.backward()
+            self.optimizer.step()
 
     def save(self):
-        # atomic save
-        fd, tmp_path = tempfile.mkstemp(prefix='.tmp_critic_', suffix='.h5', dir=os.path.dirname(self.model_path) or '.')
+        fd, tmp_path = tempfile.mkstemp(prefix='.tmp_critic_', suffix='.pt', dir=os.path.dirname(self.model_path) or '.')
         os.close(fd)
         try:
-            self.model.save(tmp_path)
-            os.replace(tmp_path, self.model_path)  # atomic on POSIX
+            torch.save(self.model.state_dict(), tmp_path)
+            os.replace(tmp_path, self.model_path)
         except KeyboardInterrupt:
-            # If interrupted during save, leave old file untouched
             if os.path.exists(tmp_path):
                 os.remove(tmp_path)
             raise

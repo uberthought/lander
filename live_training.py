@@ -1,3 +1,4 @@
+import torch
 from critic import CriticModel
 import gymnasium as gym
 from gymnasium.wrappers import RecordVideo
@@ -6,8 +7,6 @@ import os
 import shutil
 import argparse
 from collections import deque
-
-import tensorflow as tf
 
 from observation import Observation, calculate_value
 from actor import ActorModel
@@ -79,21 +78,26 @@ def train(env, actor_model: ActorModel, critic_model: CriticModel, episodes, tra
             replay_buffer.add(transition)
             replay_buffer0.append(transition)
 
-            value1 = calculate_value(next_obs).numpy()[0]
+            value1 = calculate_value(next_obs)[0]
 
-            main_thruster_emoji = "▼"
-            right_thruster_emoji = "▶"
-            left_thruster_emoji = "◀"
-            no_op_emoji = " "
-            rocket = no_op_emoji if action == 0 else right_thruster_emoji if action == 1 else main_thruster_emoji if action == 2 else left_thruster_emoji
-            print(f"Episode: {episode+1}/{episodes}, Step: {t}, Value: {value1:.4f}, Rocket: {rocket}, Prediction: {prediction}")
+            # main_thruster_emoji = "▼"
+            # right_thruster_emoji = "▶"
+            # left_thruster_emoji = "◀"
+            # no_op_emoji = " "
+            # rocket = no_op_emoji if action == 0 else right_thruster_emoji if action == 1 else main_thruster_emoji if action == 2 else left_thruster_emoji
+            # print(f"Episode: {episode+1}/{episodes}, Step: {t}, Value: {value1:.4f}, Rocket: {rocket}, Prediction: {prediction}")
 
-            # actor_prediction = actor_model.model.predict(obs.reshape((1, -1)), verbose=0)[0]
-            # actions = np.arange(critic_model.num_actions)
-            # actions_onehot = tf.one_hot(actions, critic_model.num_actions)
-            # sensors_tiled = tf.repeat(obs.reshape((1, -1)), critic_model.num_actions, axis=0)
-            # critic_predictions = critic_model.model.predict([sensors_tiled, actions_onehot], verbose=0).flatten()
-            # print(f"value: {value1:.4f}  critic: {critic_predictions}  actor: {actor_prediction}")
+            # predicted_rewards = self.critic_model.model(sensors_1_tiled, actions_onehot_tiled)
+            obs_tensor = torch.tensor(obs.reshape((1, -1)), dtype=torch.float32, device=actor_model.device)
+            actor_prediction = actor_model.model(obs_tensor).cpu().detach().numpy().flatten()
+            actions = np.arange(critic_model.num_actions)
+            actions_onehot = np.eye(critic_model.num_actions)[actions]
+            sensors_tiled = np.tile(obs.reshape((1, -1)), (critic_model.num_actions, 1))
+            sensors_tiled_tensor = torch.tensor(sensors_tiled, dtype=torch.float32, device=critic_model.device)
+            actions_onehot_tensor = torch.tensor(actions_onehot, dtype=torch.float32, device=critic_model.device)
+
+            critic_predictions = critic_model.model(sensors_tiled_tensor, actions_onehot_tensor).cpu().detach().numpy().flatten()
+            print(f"value: {value1:.4f}  critic: {critic_predictions}  actor: {actor_prediction}")
 
 
             obs = next_obs
@@ -106,7 +110,7 @@ def train(env, actor_model: ActorModel, critic_model: CriticModel, episodes, tra
         # save video with final value in the filename
 
         video_path = env.video_recorder.path
-        value1 = calculate_value(next_obs).numpy()[0]
+        value1 = calculate_value(next_obs)[0]
         video_name_with_final_value = f"{video_folder}/episode_{episode+1}_value_{value1:.4f}_t_{t}.mp4"
         shutil.move(video_path, video_name_with_final_value)
 

@@ -1,7 +1,7 @@
-from tensorflow.keras.models import Model, load_model  # type: ignore
-from tensorflow.keras.layers import Dense, Input  # type: ignore
-from tensorflow.keras.optimizers import legacy as legacy_optimizers  # type: ignore
-import tensorflow as tf
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
 import numpy as np
 import os
 import tempfile
@@ -9,79 +9,99 @@ import tempfile
 from observation import calculate_value
 
 
+
+# PyTorch Actor Model
+class ActorNet(nn.Module):
+    def __init__(self, input_dim, num_actions, nodes, layers):
+        super().__init__()
+        self.input_dim = input_dim
+        self.num_actions = num_actions
+        self.nodes = nodes
+        self.layers = layers
+
+        self.fc1 = nn.Linear(input_dim, nodes)
+        self.fc2 = nn.Linear(nodes, nodes)
+        self.skip_layers = nn.ModuleList([
+            nn.Sequential(
+                nn.Linear(nodes, nodes),
+                nn.LeakyReLU(),
+                nn.Linear(nodes, nodes),
+                nn.LeakyReLU()
+            ) for _ in range(layers)
+        ])
+        self.fc3 = nn.Linear(nodes, nodes)
+        self.fc4 = nn.Linear(nodes, nodes)
+        self.out = nn.Linear(nodes, num_actions)
+
+    def forward(self, x):
+        x = F.leaky_relu(self.fc1(x))
+        x = F.leaky_relu(self.fc2(x))
+        for skip_layer in self.skip_layers:
+            skip = x
+            x = skip_layer(x)
+            x = x + skip
+        x = F.leaky_relu(self.fc3(x))
+        x = F.leaky_relu(self.fc4(x))
+        x = F.softmax(self.out(x), dim=-1)
+        return x
+
+
 class ActorModel:
-    def __init__(self, model_path="models/actor_model.h5"):
+    def __init__(self, model_path="models/actor_model.pt"):
         self.model_path = model_path
-        # input is state values (translation, rotation, deltas, fuel)
         self.input_dim = 10
-        # output is 4 values (action probabilities for each action)
         self.num_actions = 4
         self.nodes = self.input_dim * 16
         self.layers = 2
 
         self.model = self._load_model() or self._create_model()
+        self.device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+        self.model.to(self.device)
+        self.optimizer = optim.Adam(self.model.parameters())
+        self.criterion = nn.MSELoss()
 
     def set_critic_model(self, critic_model):
         self.critic_model = critic_model
 
     def _create_model(self):
-        """Creates a new actor model."""
-
-        input = Input(shape=(self.input_dim,))
-
-        x = input
-        x = Dense(self.nodes, activation='leaky_relu')(x)
-        x = Dense(self.nodes, activation='leaky_relu')(x)
-        for _ in range(self.layers):
-            skip = x
-            x = Dense(self.nodes, activation='leaky_relu')(x)
-            x = Dense(self.nodes, activation='leaky_relu')(x)
-            x = x + skip
-        x = Dense(self.nodes, activation='leaky_relu')(x)
-        x = Dense(self.nodes, activation='leaky_relu')(x)
-        x = Dense(self.num_actions, activation='softmax')(x)
-        output = x
-
-        model = Model(inputs=input, outputs=output)
-        optimizer = legacy_optimizers.Adam()
-        model.compile(optimizer=optimizer, loss='categorical_crossentropy')
-        return model
-
+        return ActorNet(self.input_dim, self.num_actions, self.nodes, self.layers)
 
     def _load_model(self):
-        """Loads the actor model from the specified path."""
         if os.path.exists(self.model_path):
-            return load_model(self.model_path)
+            model = ActorNet(self.input_dim, self.num_actions, self.nodes, self.layers)
+            model.load_state_dict(torch.load(self.model_path, map_location="cpu"))
+            return model
         return None
 
-
     def train(self, observations):
-        """Trains the actor model."""
+        self.model.train()
+        states_0 = torch.tensor(np.array([obs.state for obs in observations]), dtype=torch.float32, device=self.device)
+        states_1 = torch.tensor(np.array([obs.next_state for obs in observations]), dtype=torch.float32, device=self.device)
 
-        states_0 = tf.convert_to_tensor([obs.state for obs in observations], dtype=tf.float32)
-        states_1 = tf.convert_to_tensor([obs.next_state for obs in observations], dtype=tf.float32)
-        sensors_1_tiled = tf.repeat(states_1, self.num_actions, axis=0)  # shape: (num_obs * OUTPUT_DIM, sensor_dim)
+        sensors_1_tiled = states_1.repeat_interleave(self.num_actions, dim=0)
+        actions_onehot_tiled = torch.eye(self.num_actions, device=self.device).repeat(len(observations), 1)
 
-        actions_onehot_tiled = tf.one_hot(tf.tile(tf.range(self.num_actions), [len(observations)]), self.num_actions) # shape: (num_obs * OUTPUT_DIM, OUTPUT_DIM)
+        with torch.no_grad():
+            predicted_rewards = self.critic_model.model(sensors_1_tiled, actions_onehot_tiled)
+            predicted_rewards = predicted_rewards.view(len(observations), self.num_actions)
+            predicted_actions = torch.argmax(predicted_rewards, dim=1)
 
-        predicted_rewards = self.critic_model.model.predict([sensors_1_tiled, actions_onehot_tiled], batch_size=2**14, verbose=0)
-        predicted_rewards = tf.reshape(predicted_rewards, (len(observations), self.num_actions))
+        best_actions = F.one_hot(predicted_actions, num_classes=self.num_actions).float()
 
-        predicted_actions = tf.argmax(predicted_rewards, axis=1)
-        best_actions = tf.one_hot(predicted_actions, self.num_actions)
-
-        self.model.fit(states_0, best_actions, batch_size=2**15, epochs=4, verbose=0)
-
+        for _ in range(4):
+            self.optimizer.zero_grad()
+            outputs = self.model(states_0)
+            loss = self.criterion(outputs, best_actions)
+            loss.backward()
+            self.optimizer.step()
 
     def save(self):
-        # atomic save
-        fd, tmp_path = tempfile.mkstemp(prefix='.tmp_actor_', suffix='.h5', dir=os.path.dirname(self.model_path) or '.')
+        fd, tmp_path = tempfile.mkstemp(prefix='.tmp_actor_', suffix='.pt', dir=os.path.dirname(self.model_path) or '.')
         os.close(fd)
         try:
-            self.model.save(tmp_path)
-            os.replace(tmp_path, self.model_path)  # atomic on POSIX
+            torch.save(self.model.state_dict(), tmp_path)
+            os.replace(tmp_path, self.model_path)
         except KeyboardInterrupt:
-            # If interrupted during save, leave old file untouched
             if os.path.exists(tmp_path):
                 os.remove(tmp_path)
             raise
@@ -90,21 +110,11 @@ class ActorModel:
                 os.remove(tmp_path)
             raise
 
-
     def get_optimal_action(self, obs):
-        """Gets the optimal action for a given observation."""
-
-        sensors = tf.convert_to_tensor([obs], dtype=tf.float32)
-
-        prediction0 = self.model.predict(sensors, verbose=0)[0]
-        prediction0 = tf.convert_to_tensor(prediction0, dtype=tf.float32)
-
-        # greedy action selection
-        # action = tf.argmax(prediction0)
-        # action = int(action.numpy())
-
-        # probabilistic action selection
-        action = np.random.choice(self.num_actions, p=prediction0.numpy())
-        action = int(action)
-
-        return action, prediction0
+        self.model.eval()
+        sensors = torch.tensor([obs], dtype=torch.float32, device=self.device)
+        with torch.no_grad():
+            prediction0 = self.model(sensors)[0]
+        prediction_np = prediction0.cpu().numpy()
+        action = np.random.choice(self.num_actions, p=prediction_np)
+        return int(action), prediction_np
