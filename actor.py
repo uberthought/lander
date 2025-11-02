@@ -100,7 +100,11 @@ class ActorModel:
         prediction0 = tf.convert_to_tensor(prediction0, dtype=tf.float32)
 
         # greedy action selection
-        action = tf.argmax(prediction0)
-        action = int(action.numpy())
+        # action = tf.argmax(prediction0)
+        # action = int(action.numpy())
+
+        # probabilistic action selection
+        action = np.random.choice(self.num_actions, p=prediction0.numpy())
+        action = int(action)
 
         return action, prediction0

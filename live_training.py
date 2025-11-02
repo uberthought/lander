@@ -62,12 +62,12 @@ def train(env, actor_model: ActorModel, critic_model: CriticModel, episodes, tra
                 next_obs[5] = obs[5]
 
             # if legs are down, consider episode done
-            # legs_down = next_obs[6] == 1 and next_obs[7] == 1
-            # if legs_down:
-            #     # print(next_obs)
-            #     while not done and not truncated:
-            #         _, _, done, truncated, _ = env.step(0)
-            #     done = True
+            legs_down = next_obs[6] == 1 and next_obs[7] == 1 and obs[6] == 1 and obs[7] == 1
+            if legs_down:
+                # print(next_obs)
+                while not done and not truncated:
+                    _, _, done, truncated, _ = env.step(0)
+                done = True
 
             done = done or truncated
 
@@ -119,9 +119,9 @@ def train(env, actor_model: ActorModel, critic_model: CriticModel, episodes, tra
         # if it's time to train the model, do so
 
         if do_training:
-            sample_len = len(replay_buffer0) * 16
+            sample_len = len(replay_buffer0) * 8
             replay_buffer0 = list(replay_buffer0)
-            for k in range(32):
+            for k in range(64):
                 print(f"Training iteration {k} discount_factor={critic_model.discount_factor}...")
                 training_sample = replay_buffer.sample(sample_len) + replay_buffer0
                 actor_model.train(training_sample)
