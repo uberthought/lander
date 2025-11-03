@@ -32,15 +32,6 @@ class CriticNet(nn.Module):
             ) for _ in range(layers)
         ])
 
-        self.attention_layers = nn.ModuleList([
-            nn.Sequential(
-                nn.Linear(nodes, nodes),
-                nn.LeakyReLU(),
-                nn.Linear(nodes, nodes),
-                nn.Tanh()
-            ) for _ in range(layers)
-        ])
-
         self.output = nn.Sequential(
             nn.Linear(nodes, 1),
             nn.Sigmoid()
@@ -51,8 +42,7 @@ class CriticNet(nn.Module):
         x = self.input(x)
         for i in range(self.layers):
             skip_layer = self.skip_layers[i]
-            attention_layer = self.attention_layers[i]
-            x = x + skip_layer(x) * attention_layer(x)
+            x = x + skip_layer(x)
         x = self.output(x)
         return x
 
@@ -64,7 +54,7 @@ class CriticModel:
         self.num_actions = 4
         self.discount_factor = discount_factor
         self.nodes = self.input_dim * self.num_actions * 2
-        self.layers = 32
+        self.layers = 8
 
         self.device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
         self.model = self._load_model() or self._create_model()

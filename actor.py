@@ -49,7 +49,7 @@ class ActorModel:
         self.input_dim = 10
         self.num_actions = 4
         self.nodes = self.input_dim * self.num_actions * 2
-        self.layers = 4
+        self.layers = 2
 
         self.device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
         self.model = self._load_model() or self._create_model()
