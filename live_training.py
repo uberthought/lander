@@ -87,7 +87,6 @@ def train(env, actor_model: ActorModel, critic_model: CriticModel, episodes, tra
             rocket = no_op_emoji if action == 0 else right_thruster_emoji if action == 1 else main_thruster_emoji if action == 2 else left_thruster_emoji
             print(f"Episode: {episode+1}/{episodes}, Step: {t}, Value: {value1:.4f}, Rocket: {rocket}, Prediction: {prediction}")
 
-            # predicted_rewards = self.critic_model.model(sensors_1_tiled, actions_onehot_tiled)
             # obs_tensor = torch.tensor(obs.reshape((1, -1)), dtype=torch.float32, device=actor_model.device)
             # actor_prediction = actor_model.model(obs_tensor).cpu().detach().numpy().flatten()
             # actions = np.arange(critic_model.num_actions)

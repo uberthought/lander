@@ -33,6 +33,10 @@ class CriticNet(nn.Module):
         ])
 
         self.output = nn.Sequential(
+            nn.Linear(nodes, nodes),
+            nn.LeakyReLU(),
+            nn.Linear(nodes, nodes),
+            nn.LeakyReLU(),
             nn.Linear(nodes, 1),
             nn.Sigmoid()
         )
@@ -53,7 +57,7 @@ class CriticModel:
         self.input_dim = 10
         self.num_actions = 4
         self.discount_factor = discount_factor
-        self.nodes = self.input_dim * self.num_actions * 3
+        self.nodes = self.input_dim * self.num_actions * 4
         self.layers = 4
 
         self.device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
@@ -109,8 +113,8 @@ class CriticModel:
         values = (current_values + future_values) * not_dones + values_1 * dones
 
         # For done indices, set values to values_1
-        done_indices = (dones == 1.0).nonzero(as_tuple=True)[0]
-        values[done_indices] = values_1[done_indices]
+        # done_indices = (dones == 1.0).nonzero(as_tuple=True)[0]
+        # values[done_indices] = values_1[done_indices]
 
         # Train for 4 epochs
         for _ in range(4):

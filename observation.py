@@ -36,10 +36,10 @@ def calculate_value(obs):
     # fuel = obs[:, 8:9]
     # sensors = np.concatenate([sensors, fuel], axis=1)
     value = np.prod(sensors, axis=1)
-    leg0 = obs[:, 6]
-    leg1 = obs[:, 7]
-    leg_multiplier = (leg0 + leg1) / 2.0
-    value = value * 0.7 + leg_multiplier * 0.3
+    # leg0 = obs[:, 6]
+    # leg1 = obs[:, 7]
+    # leg_multiplier = (leg0 + leg1) / 2.0
+    # value = value * 0.7 + leg_multiplier * 0.3
 
     return value
 
