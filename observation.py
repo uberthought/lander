@@ -1,6 +1,8 @@
 import numpy as np
 from collections import namedtuple
 
+import torch
+
 # Define the normalization factors for the observation space
 # These values are based on the observation space of the LunarLander-v2 environment
 # and are used to scale the observations to a range of approximately [-1, 1]
@@ -10,6 +12,30 @@ from collections import namedtuple
 NORMALIZATION_FACTORS = np.array([1, 1.75, 4, 4, 3.1415927, 5], dtype=np.float32)
 
 def calculate_value(obs):
+    sensors = obs[:, :6]
+    normalization_factors = torch.tensor(NORMALIZATION_FACTORS, dtype=torch.float32, device=sensors.device)
+    sensors = sensors / normalization_factors
+    sensors = torch.abs(sensors)
+    sensors = torch.clamp(sensors, 0, 1)
+    sensors = 1 - sensors
+
+    # for debugging, only use sensor 0, 1, 3, and 4
+    sensors = sensors[:, [0, 1, 3, 4]]
+
+    # append the fuel level to the sensors
+    # fuel = obs[:, 8:9]
+    # sensors = torch.cat([sensors, fuel], dim=1)
+
+    value = torch.prod(sensors, dim=1)
+
+    # leg0 = obs[:, 6]
+    # leg1 = obs[:, 7]
+    # leg_multiplier = (leg0 + leg1) / 2.0
+    # value = value * 0.7 + leg_multiplier * 0.3
+
+    return value
+    
+def calculate_value_old(obs):
     """
     Calculates a scalar value from an observation, which is used as a proxy for the
     "goodness" of the state. This value is then used as an input to the actor model.

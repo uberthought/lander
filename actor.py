@@ -6,10 +6,6 @@ import numpy as np
 import os
 import tempfile
 
-from observation import calculate_value
-
-
-
 # PyTorch Actor Model
 class ActorNet(nn.Module):
     def __init__(self, input_dim, num_actions, nodes, layers):

@@ -9,7 +9,6 @@ import tempfile
 from observation import calculate_value
 
 
-
 # PyTorch Critic Model
 class CriticNet(nn.Module):
     def __init__(self, input_dim, num_actions, nodes, layers):
@@ -89,9 +88,13 @@ class CriticModel:
 
         actions_hot = F.one_hot(actions, num_classes=self.num_actions).float()
 
+        # calculate the values for the current states
+        # values_0 = calculate_value(states_0)
+        # values_0 = values_0.view(-1, 1)
+
         # calculate the values for the next states
-        values_1_np = calculate_value(states_1.cpu().numpy())
-        values_1 = torch.tensor(values_1_np, dtype=torch.float32, device=self.device).view(-1, 1)
+        values_1 = calculate_value(states_1)
+        values_1 = values_1.view(-1, 1)
 
         # get the predicted actions for the next states
         with torch.no_grad():
@@ -104,17 +107,12 @@ class CriticModel:
             p_values_2 = self.model(states_1, p_actions_hot)
         p_values_2 = p_values_2.view(-1, 1)
 
-        dones = dones.view(-1, 1)
-        not_dones = 1 - dones
-
-        current_values = (1 - self.discount_factor) * values_1
-        future_values = self.discount_factor * p_values_2
-
-        values = (current_values + future_values) * not_dones + values_1 * dones
+        values = (1 - self.discount_factor) * values_1 + self.discount_factor * p_values_2
 
         # For done indices, set values to values_1
-        # done_indices = (dones == 1.0).nonzero(as_tuple=True)[0]
-        # values[done_indices] = values_1[done_indices]
+        dones = dones.view(-1, 1)
+        done_indices = (dones == 1.0).nonzero(as_tuple=True)[0]
+        values[done_indices] = values_1[done_indices]
 
         # Train for 4 epochs
         for _ in range(4):

@@ -78,7 +78,7 @@ def train(env, actor_model: ActorModel, critic_model: CriticModel, episodes, tra
             replay_buffer.add(transition)
             replay_buffer0.append(transition)
 
-            value1 = calculate_value(next_obs)[0]
+            value1 = calculate_value(torch.tensor(next_obs.reshape(1, -1), dtype=torch.float32, device=actor_model.device)).item()
 
             main_thruster_emoji = "▼"
             right_thruster_emoji = "▶"
@@ -108,7 +108,7 @@ def train(env, actor_model: ActorModel, critic_model: CriticModel, episodes, tra
         # save video with final value in the filename
 
         video_path = env.video_recorder.path
-        value1 = calculate_value(next_obs)[0]
+        value1 = calculate_value(torch.tensor(next_obs.reshape(1, -1), dtype=torch.float32, device=actor_model.device)).item()
         video_name_with_final_value = f"{video_folder}/episode_{episode+1}_value_{value1:.4f}_t_{t}.mp4"
         shutil.move(video_path, video_name_with_final_value)
 
@@ -120,7 +120,8 @@ def train(env, actor_model: ActorModel, critic_model: CriticModel, episodes, tra
         # if it's time to train the model, do so
 
         if do_training:
-            sample_len = len(replay_buffer0) * 32
+            # sample_len = len(replay_buffer0) * 32
+            sample_len = 2 ** 14
             replay_buffer0 = list(replay_buffer0)
             for k in range(32):
                 print(f"Training iteration {k} discount_factor={critic_model.discount_factor}...")
