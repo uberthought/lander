@@ -48,7 +48,7 @@ class ActorModel:
         self.model_path = model_path
         self.input_dim = 10
         self.num_actions = 4
-        self.nodes = self.input_dim * self.num_actions * 2
+        self.nodes = self.input_dim * self.num_actions * 3
         self.layers = 2
 
         self.device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
@@ -113,5 +113,11 @@ class ActorModel:
         with torch.no_grad():
             prediction0 = self.model(sensors)[0]
         prediction_np = prediction0.cpu().numpy()
+
+        # greedy action selection
+        # action = np.argmax(prediction_np)
+
+        # stochastic action selection
         action = np.random.choice(self.num_actions, p=prediction_np)
+        
         return int(action), prediction_np

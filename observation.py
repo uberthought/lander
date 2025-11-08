@@ -33,8 +33,8 @@ def calculate_value(obs):
     sensors = np.clip(sensors, 0, 1)
     sensors = 1 - sensors
     # append the fuel level to the sensors
-    fuel = obs[:, 8:9]
-    sensors = np.concatenate([sensors, fuel], axis=1)
+    # fuel = obs[:, 8:9]
+    # sensors = np.concatenate([sensors, fuel], axis=1)
     value = np.prod(sensors, axis=1)
     leg0 = obs[:, 6]
     leg1 = obs[:, 7]
