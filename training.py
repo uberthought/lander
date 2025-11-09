@@ -1,4 +1,3 @@
-from critic import CriticModel
 import numpy as np
 import argparse
 
@@ -17,10 +16,7 @@ def main():
     np.set_printoptions(formatter={'float': lambda x: "{0:+0.4f}".format(x)})
 
     replay_buffer = ReplayBuffer(state_shape=(10,))
-    actor_model = ActorModel()
-    critic_model = CriticModel(discount_factor=discount_factor)
-    actor_model.set_critic_model(critic_model)
-    critic_model.set_actor_model(actor_model)
+    actor_model = ActorModel(discount_factor=discount_factor)
 
     size = min(replay_buffer.size, 2 ** sample_size)
     if size > 0:
@@ -29,10 +25,8 @@ def main():
             training_sample = replay_buffer.sample(size)
             # training_sample = replay_buffer
             actor_model.train(training_sample)
-            critic_model.train(training_sample)
 
     actor_model.save()
-    critic_model.save()
 
 if __name__ == "__main__":
     main()

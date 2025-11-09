@@ -1,5 +1,4 @@
 import torch
-from critic import CriticModel
 import gymnasium as gym
 from gymnasium.wrappers import RecordVideo
 import numpy as np
@@ -12,7 +11,7 @@ from observation import Observation, calculate_value
 from actor import ActorModel
 from ReplayBuffer import ReplayBuffer
 
-def train(env, actor_model: ActorModel, critic_model: CriticModel, episodes, train_every_n_episodes, video_folder):
+def train(env, actor_model: ActorModel, episodes, train_every_n_episodes, video_folder):
     # Main long-term buffer (persistent) and recent buffer for on-policy-ish updates
     # State shape is 9: 8 from LunarLander-v2 + 1 for done flag
     replay_buffer = ReplayBuffer(state_shape=(10,))
@@ -89,14 +88,7 @@ def train(env, actor_model: ActorModel, critic_model: CriticModel, episodes, tra
 
             # obs_tensor = torch.tensor(obs.reshape((1, -1)), dtype=torch.float32, device=actor_model.device)
             # actor_prediction = actor_model.model(obs_tensor).cpu().detach().numpy().flatten()
-            # actions = np.arange(critic_model.num_actions)
-            # actions_onehot = np.eye(critic_model.num_actions)[actions]
-            # sensors_tiled = np.tile(obs.reshape((1, -1)), (critic_model.num_actions, 1))
-            # sensors_tiled_tensor = torch.tensor(sensors_tiled, dtype=torch.float32, device=critic_model.device)
-            # actions_onehot_tensor = torch.tensor(actions_onehot, dtype=torch.float32, device=critic_model.device)
-            # critic_predictions = critic_model.model(sensors_tiled_tensor, actions_onehot_tensor).cpu().detach().numpy().flatten()
-            # print(f"value: {value1:.4f}  critic: {critic_predictions}  actor: {actor_prediction}")
-
+            # print(f"value: {value1:.4f}  actor: {actor_prediction}")
 
             obs = next_obs
 
@@ -124,13 +116,11 @@ def train(env, actor_model: ActorModel, critic_model: CriticModel, episodes, tra
             sample_len = 2 ** 14
             replay_buffer0 = list(replay_buffer0)
             for k in range(32):
-                print(f"Training iteration {k} discount_factor={critic_model.discount_factor}...")
+                print(f"Training iteration {k} discount_factor={actor_model.discount_factor}...")
                 training_sample = replay_buffer.sample(sample_len) + replay_buffer0
                 actor_model.train(training_sample)
-                critic_model.train(training_sample)
 
             actor_model.save()
-            critic_model.save()
 
             replay_buffer0 = deque(maxlen=40000)
             # Autosave observations
@@ -153,12 +143,9 @@ def main():
 
     env = gym.make("LunarLander-v2", render_mode="rgb_array")
     env = RecordVideo(env, video_folder="./videos", episode_trigger=lambda x: True, disable_logger=True)
-    actor_model = ActorModel()
-    critic_model = CriticModel(discount_factor=discount_factor)
-    actor_model.set_critic_model(critic_model)
-    critic_model.set_actor_model(actor_model)
+    actor_model = ActorModel(discount_factor=discount_factor)
 
-    train(env, actor_model, critic_model, episodes, train_every, video_folder="./videos")
+    train(env, actor_model, episodes, train_every, video_folder="./videos")
 
     env.close()
 

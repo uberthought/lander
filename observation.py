@@ -9,7 +9,8 @@ import torch
 # x, y, v_x, v_y, angle, v_angle
 
 # used to normalize the sensor values to [0, 1]
-NORMALIZATION_FACTORS = np.array([1, 1.75, 4, 4, 3.1415927, 5], dtype=np.float32)
+# NORMALIZATION_FACTORS = np.array([1, 1.75, 4, 4, 3.1415927, 5], dtype=np.float32)
+NORMALIZATION_FACTORS = np.array([1, 1.75, 4, 2, 3.1415927, 5], dtype=np.float32)
 
 def calculate_value(obs):
     sensors = obs[:, :6]
@@ -20,11 +21,11 @@ def calculate_value(obs):
     sensors = 1 - sensors
 
     # for debugging, only use sensor 0, 1, 3, and 4
-    sensors = sensors[:, [0, 1, 3, 4]]
+    # sensors = sensors[:, [0, 1, 3, 4]]
 
     # append the fuel level to the sensors
-    # fuel = obs[:, 8:9]
-    # sensors = torch.cat([sensors, fuel], dim=1)
+    fuel = obs[:, 8:9]
+    sensors = torch.cat([sensors, fuel], dim=1)
 
     value = torch.prod(sensors, dim=1)
 
