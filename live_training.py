@@ -50,7 +50,20 @@ def train(env, actor_model: ActorModel, episodes, train_every_n_episodes, video_
             action, prediction = actor_model.get_optimal_action(obs)
 
             next_obs, _, done, truncated, _ = env.step(action)
+            if not done and not truncated:
+                next_obs, _, done, truncated, _ = env.step(action)
+
+            # normalize the next observation
             next_obs = normalize_observation(next_obs)
+
+            # if done, use the previous observation and add the legs and fuel level
+            if done or truncated:
+                next_obs[0] = obs[0]
+                next_obs[1] = obs[1]
+                next_obs[2] = obs[2]
+                next_obs[3] = obs[3]
+                next_obs[4] = obs[4]
+                next_obs[5] = obs[5]
 
             # if the action is not to do nothing, decrease fuel
             if action != 0:

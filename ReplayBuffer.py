@@ -12,7 +12,7 @@ class ReplayBuffer:
     """
 
     def __init__(self, maxlen: int | None = None, filename: str | None = None, state_shape: Tuple[int, ...] = None, compress: bool = True):
-        self.maxlen = maxlen or 2**22 # 
+        self.maxlen = maxlen or 2**24
         self.filename = filename or "replay_buffer.dat"
         self.compress = compress  # kept for compatibility, not used with memmap
         self.state_shape = state_shape
