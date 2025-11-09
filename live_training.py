@@ -50,8 +50,6 @@ def train(env, actor_model: ActorModel, episodes, train_every_n_episodes, video_
             action, prediction = actor_model.get_optimal_action(obs)
 
             next_obs, _, done, truncated, _ = env.step(action)
-            if not done and not truncated:
-                next_obs, _, done, truncated, _ = env.step(action)
 
             # normalize the next observation
             next_obs = normalize_observation(next_obs)
