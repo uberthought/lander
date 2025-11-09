@@ -36,7 +36,7 @@ class ActorNet(nn.Module):
             nn.Linear(nodes, nodes),
             nn.LeakyReLU(),
             nn.Linear(nodes, 1),
-            nn.Sigmoid()
+            nn.Tanh()
         )
 
     def forward(self, x):
@@ -53,8 +53,8 @@ class ActorModel:
         self.model_path = model_path
         self.input_dim = 10
         self.num_actions = 4
-        self.nodes = self.input_dim * self.num_actions * 4
-        self.layers = 8
+        self.nodes = self.input_dim * self.num_actions * 3
+        self.layers = 4
 
         self.device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
         self.model = self._load_model() or self._create_model()
@@ -92,19 +92,11 @@ class ActorModel:
         p_rewards_2 = torch.max(p_rewards_2.view(-1, self.num_actions), dim=1)[0].view(-1, 1)
 
 
-        values_0 = calculate_value(states_0).view(-1, 1)
         values_1 = calculate_value(states_1).view(-1, 1)
         current_values = (1 - self.discount_factor) * values_1
         future_values = self.discount_factor * p_rewards_2
 
-
-        print(p_rewards_2[0:10].cpu().numpy().flatten())
-        print(values_1[0:10].cpu().numpy().flatten())
-        print(current_values[0:10].cpu().numpy().flatten())
-        print(future_values[0:10].cpu().numpy().flatten())
-        exit()
-
-        values = current_values + future_values
+        values = (current_values + future_values)
 
         done_indicies = (dones_1 == 1.0).nonzero(as_tuple=True)[0]
         values[done_indicies] = values_1[done_indicies]
@@ -143,6 +135,12 @@ class ActorModel:
         with torch.no_grad():
             action_values = self.model(actor_inputs)
 
+        # if any of the observation values are nan, break
+        if torch.isnan(action_values).any() or torch.isinf(action_values).any():
+            print(f"NaN or Inf detected in action_values: {action_values}, exiting...")
+            exit()
+
+
         # greedy action selection
         action1 = torch.argmax(action_values).item()
 
@@ -154,3 +152,16 @@ class ActorModel:
         action = action2 if np.random.rand() < 0.05 else action1
         
         return int(action), action_values.view(-1).cpu().numpy()
+
+    def get_all_actions(self, obs):
+        self.model.eval()
+        sensors = torch.tensor([obs], dtype=torch.float32, device=self.device)
+        sensors_tile = sensors.unsqueeze(1).repeat(1, self.num_actions, 1)
+        actions_arange = torch.arange(self.num_actions, device=self.device)
+        actions_onehot = F.one_hot(actions_arange, num_classes=self.num_actions)
+        actions_tile = actions_onehot.unsqueeze(0).repeat(len(sensors), 1, 1)
+        actor_inputs = torch.cat([sensors_tile, actions_tile], dim=-1).view(-1, self.input_dim + self.num_actions)
+        with torch.no_grad():
+            action_values = self.model(actor_inputs)
+
+        return action_values

@@ -11,6 +11,12 @@ from observation import Observation, calculate_value
 from actor import ActorModel
 from ReplayBuffer import ReplayBuffer
 
+# Define the normalization factors for the observation space
+# These values are based on the observation space of the LunarLander-v2 environment
+# and are used to scale the observations to a range of approximately [-1, 1]
+# x, y, v_x, v_y, angle, v_angle
+NORMALIZATION_FACTORS = np.array([1, 1.75, 4, 4, 3.1415927, 5, 1, 1], dtype=np.float32)
+
 def train(env, actor_model: ActorModel, episodes, train_every_n_episodes, video_folder):
     # Main long-term buffer (persistent) and recent buffer for on-policy-ish updates
     # State shape is 9: 8 from LunarLander-v2 + 1 for done flag
@@ -30,8 +36,7 @@ def train(env, actor_model: ActorModel, episodes, train_every_n_episodes, video_
         do_training = (episode + 1) > 0 and (episode + 1) % train_every_n_episodes == 0
 
         obs, _ = env.reset()
-        obs = np.array(obs, dtype=np.float32)
-        # obs = np.append(obs, 0)  #  fuel level and not done
+        obs = normalize_observation(obs)
         obs = np.concatenate((obs, [1.0, 0.0]))  # fuel level and not done
 
         fuel = 1000
@@ -45,30 +50,14 @@ def train(env, actor_model: ActorModel, episodes, train_every_n_episodes, video_
             action, prediction = actor_model.get_optimal_action(obs)
 
             next_obs, _, done, truncated, _ = env.step(action)
+            next_obs = normalize_observation(next_obs)
 
             # if the action is not to do nothing, decrease fuel
             if action != 0:
                 fuel -= 1
 
-            # if done, use the previous observation and add the legs and fuel level
-            if done or truncated:
-                next_obs[0] = obs[0]
-                next_obs[1] = obs[1]
-                next_obs[2] = obs[2]
-                next_obs[3] = obs[3]
-                next_obs[4] = obs[4]
-                next_obs[5] = obs[5]
-
-            # if legs are down, consider episode done
-            # legs_down = next_obs[6] == 1 and next_obs[7] == 1 and obs[6] == 1 and obs[7] == 1
-            # if legs_down:
-            #     while not done and not truncated:
-            #         _, _, done, truncated, _ = env.step(0)
-            #     done = True
-
             done = done or truncated
 
-            next_obs = np.array(next_obs, dtype=np.float32)
             # add the fuel level and done to the observation
             next_obs = np.concatenate((next_obs, [fuel / 1000.0, 1.0 if done else 0.0]))
 
@@ -79,16 +68,21 @@ def train(env, actor_model: ActorModel, episodes, train_every_n_episodes, video_
 
             value1 = calculate_value(torch.tensor(next_obs.reshape(1, -1), dtype=torch.float32, device=actor_model.device)).item()
 
-            main_thruster_emoji = "▼"
-            right_thruster_emoji = "▶"
-            left_thruster_emoji = "◀"
-            no_op_emoji = " "
-            rocket = no_op_emoji if action == 0 else right_thruster_emoji if action == 1 else main_thruster_emoji if action == 2 else left_thruster_emoji
-            print(f"Episode: {episode+1}/{episodes}, Step: {t}, Value: {value1:.4f}, Rocket: {rocket}, Prediction: {prediction}")
+            # main_thruster_emoji = "▼"
+            # right_thruster_emoji = "▶"
+            # left_thruster_emoji = "◀"
+            # no_op_emoji = " "
+            # rocket = no_op_emoji if action == 0 else right_thruster_emoji if action == 1 else main_thruster_emoji if action == 2 else left_thruster_emoji
+            # print(f"Episode: {episode+1}/{episodes}, Step: {t}, Value: {value1:.4f}, Rocket: {rocket}, Prediction: {prediction}")
 
             # obs_tensor = torch.tensor(obs.reshape((1, -1)), dtype=torch.float32, device=actor_model.device)
-            # actor_prediction = actor_model.model(obs_tensor).cpu().detach().numpy().flatten()
-            # print(f"value: {value1:.4f}  actor: {actor_prediction}")
+            # action_onehot = torch.zeros((1, actor_model.num_actions), dtype=torch.float32, device=actor_model.device)
+            # action_onehot[0, action] = 1.0
+            # model_input = torch.cat([obs_tensor, action_onehot], dim=-1)
+            actor_prediction = actor_model.get_all_actions(next_obs).cpu().numpy().flatten()
+            action_value = actor_prediction[action]
+            diff = value1 - action_value
+            print(f"value: {value1:.4f}  actor: {actor_prediction} diff: {diff:.4f}")
 
             obs = next_obs
 
@@ -148,6 +142,13 @@ def main():
     train(env, actor_model, episodes, train_every, video_folder="./videos")
 
     env.close()
+
+def normalize_observation(obs):
+    obs = np.array(obs, dtype=np.float32)
+    obs = obs / NORMALIZATION_FACTORS
+    obs = np.clip(obs, -1.0, 1.0)
+    obs = np.sign(obs) * (np.abs(obs) ** 0.5)
+    return obs
 
 if __name__ == "__main__":
     main()
