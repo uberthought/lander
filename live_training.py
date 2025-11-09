@@ -68,21 +68,17 @@ def train(env, actor_model: ActorModel, episodes, train_every_n_episodes, video_
 
             value1 = calculate_value(torch.tensor(next_obs.reshape(1, -1), dtype=torch.float32, device=actor_model.device)).item()
 
-            # main_thruster_emoji = "▼"
-            # right_thruster_emoji = "▶"
-            # left_thruster_emoji = "◀"
-            # no_op_emoji = " "
-            # rocket = no_op_emoji if action == 0 else right_thruster_emoji if action == 1 else main_thruster_emoji if action == 2 else left_thruster_emoji
-            # print(f"Episode: {episode+1}/{episodes}, Step: {t}, Value: {value1:.4f}, Rocket: {rocket}, Prediction: {prediction}")
+            main_thruster_emoji = "▼"
+            right_thruster_emoji = "▶"
+            left_thruster_emoji = "◀"
+            no_op_emoji = " "
+            rocket = no_op_emoji if action == 0 else right_thruster_emoji if action == 1 else main_thruster_emoji if action == 2 else left_thruster_emoji
+            print(f"Episode: {episode+1}/{episodes}, Step: {t}, Value: {value1:.4f}, Rocket: {rocket}, Prediction: {prediction}")
 
-            # obs_tensor = torch.tensor(obs.reshape((1, -1)), dtype=torch.float32, device=actor_model.device)
-            # action_onehot = torch.zeros((1, actor_model.num_actions), dtype=torch.float32, device=actor_model.device)
-            # action_onehot[0, action] = 1.0
-            # model_input = torch.cat([obs_tensor, action_onehot], dim=-1)
-            actor_prediction = actor_model.get_all_actions(next_obs).cpu().numpy().flatten()
-            action_value = actor_prediction[action]
-            diff = value1 - action_value
-            print(f"value: {value1:.4f}  actor: {actor_prediction} diff: {diff:.4f}")
+            # actor_prediction = actor_model.get_all_actions(next_obs).cpu().numpy().flatten()
+            # action_value = actor_prediction[action]
+            # diff = value1 - action_value
+            # print(f"value: {value1:.4f}  actor: {actor_prediction} diff: {diff:.4f}")
 
             obs = next_obs
 
@@ -147,7 +143,7 @@ def normalize_observation(obs):
     obs = np.array(obs, dtype=np.float32)
     obs = obs / NORMALIZATION_FACTORS
     obs = np.clip(obs, -1.0, 1.0)
-    obs = np.sign(obs) * (np.abs(obs) ** 0.5)
+    obs = np.sign(obs) * (1.0 - np.abs(obs))
     return obs
 
 if __name__ == "__main__":
