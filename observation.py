@@ -9,8 +9,8 @@ import torch
 # x, y, v_x, v_y, angle, v_angle
 
 # used to normalize the sensor values to [0, 1]
-# NORMALIZATION_FACTORS = np.array([1, 1.75, 4, 4, 3.1415927, 5], dtype=np.float32)
-NORMALIZATION_FACTORS = np.array([1, 1.75, 4, 2, 3.1415927, 5], dtype=np.float32)
+NORMALIZATION_FACTORS = np.array([1, 1.75, 4, 4, 3.1415927, 5], dtype=np.float32)
+# NORMALIZATION_FACTORS = np.array([.75, 1.5, 3, 3, 3.1415927, 5], dtype=np.float32)
 
 def calculate_value(obs):
     sensors = obs[:, :6]
@@ -20,8 +20,8 @@ def calculate_value(obs):
     sensors = torch.clamp(sensors, 0, 1)
     sensors = 1 - sensors
 
-    # for debugging, only use sensor 0, 1, 3, and 4
-    # sensors = sensors[:, [0, 1, 3, 4]]
+    # so the sensors are more sensitive to values close to 1, square them
+    sensors = sensors * sensors
 
     # append the fuel level to the sensors
     fuel = obs[:, 8:9]
@@ -29,10 +29,17 @@ def calculate_value(obs):
 
     value = torch.prod(sensors, dim=1)
 
-    # leg0 = obs[:, 6]
-    # leg1 = obs[:, 7]
-    # leg_multiplier = (leg0 + leg1) / 2.0
-    # value = value * 0.7 + leg_multiplier * 0.3
+    leg0 = obs[:, 6]
+    leg1 = obs[:, 7]
+    leg_multiplier = (leg0 + leg1) / 2.0
+    done_indices = obs[:, -1] == 1.0
+    value[done_indices] = value[done_indices] * leg_multiplier[done_indices]
+
+    # if done and the vertical velocity is too high, set value to zero
+    # get observations 3 and 9 (v_y and done)
+    # crash_vector = torch.abs(obs[:, [3, -1]])
+    # crash_indices = (crash_vector[:, 0] > 0.3) & (crash_vector[:, 1] == 1.0)
+    # value[crash_indices] = 0.0
 
     return value
     

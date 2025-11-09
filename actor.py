@@ -9,6 +9,8 @@ import tempfile
 from observation import calculate_value
 
 # PyTorch Actor Model
+# input is the current state plus the action one-hot encoded
+# output is the predicted reward for the action
 class ActorNet(nn.Module):
     def __init__(self, input_dim, num_actions, nodes, layers):
         super().__init__()
@@ -17,7 +19,7 @@ class ActorNet(nn.Module):
         self.nodes = nodes
         self.layers = layers
         
-        self.input = nn.Linear(self.input_dim, nodes)
+        self.input = nn.Linear(self.input_dim + self.num_actions, nodes)
 
         self.skip_layers = nn.ModuleList([
             nn.Sequential(
@@ -33,7 +35,7 @@ class ActorNet(nn.Module):
             nn.LeakyReLU(),
             nn.Linear(nodes, nodes),
             nn.LeakyReLU(),
-            nn.Linear(nodes, num_actions),
+            nn.Linear(nodes, 1),
             nn.Sigmoid()
         )
 
@@ -52,7 +54,7 @@ class ActorModel:
         self.input_dim = 10
         self.num_actions = 4
         self.nodes = self.input_dim * self.num_actions * 4
-        self.layers = 2
+        self.layers = 8
 
         self.device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
         self.model = self._load_model() or self._create_model()
@@ -71,72 +73,47 @@ class ActorModel:
         return None
 
 
-
-    # def train(self, observations):
-    #     """Trains the actor model."""
-
-    #     states_1 = tf.convert_to_tensor([obs.next_state for obs in observations], dtype=tf.float32)
-    #     sensors_1 = states_1[:, :8]
-    #     p_rewards_1 = self.model.predict(sensors_1, batch_size=2**14, verbose=0)
-
-    #     # Vectorized Q-value update
-    #     q_values_1 = tf.reduce_max(p_rewards_1, axis=1)
-    #     q_values_1 = tf.reshape(q_values_1, (-1, 1))
-
-    #     values_1 = calculate_value(states_1)
-    #     values_1 = tf.reshape(values_1, (-1, 1))
-    #     current_values = (1 - self.discount_factor) * values_1
-    #     future_values = self.discount_factor * q_values_1
-
-    #     dones_1 = tf.convert_to_tensor([obs.next_state[-1] for obs in observations], dtype=np.float32)
-    #     dones = tf.convert_to_tensor(dones_1, dtype=tf.float32)
-    #     dones = tf.reshape(dones, (-1, 1))
-    #     not_dones = 1 - dones
-    #     values = (current_values + future_values) * not_dones + values_1 * dones
-
-    #     states_0 = tf.convert_to_tensor([obs.state for obs in observations], dtype=tf.float32)
-    #     sensors_0 = states_0[:, :8]
-    #     p_rewards_0 = self.model.predict(sensors_0, batch_size=2**14, verbose=0)
-    #     actions_1 = tf.convert_to_tensor([obs.action for obs in observations], dtype=np.float32)
-    #     indices = tf.stack([tf.range(tf.shape(actions_1)[0], dtype=tf.int32), 
-    #                 tf.cast(actions_1, tf.int32)], axis=1)
-    #     p_rewards_0 = tf.tensor_scatter_nd_update(p_rewards_0, indices, tf.squeeze(values))
-
-    #     self.model.fit(sensors_0, p_rewards_0, batch_size=2**14, epochs=4, verbose=0)
-
-
     def train(self, observations):
         self.model.train()
-        states_1 = torch.tensor(np.array([obs.next_state for obs in observations]), dtype=torch.float32, device=self.device)
-        with torch.no_grad():
-            p_rewards_1 = self.model(states_1)
-
-        # Vectorized Q-value update
-        q_values_1, _ = torch.max(p_rewards_1, dim=1)
-        q_values_1 = q_values_1.view(-1, 1)
-
-        values_1 = calculate_value(states_1)
-        values_1 = values_1.view(-1, 1)
-        current_values = (1 - self.discount_factor) * values_1
-        future_values = self.discount_factor * q_values_1
-
-        dones_1 = torch.tensor([obs.next_state[-1] for obs in observations], dtype=torch.float32, device=self.device)
-        dones = dones_1.view(-1, 1)
-        not_dones = 1 - dones
-        values = (current_values + future_values) * not_dones + values_1 * dones
 
         states_0 = torch.tensor(np.array([obs.state for obs in observations]), dtype=torch.float32, device=self.device)
+        states_1 = torch.tensor(np.array([obs.next_state for obs in observations]), dtype=torch.float32, device=self.device)
+        actions_0 = torch.tensor([int(obs.action) for obs in observations], dtype=torch.long, device=self.device)
+        dones_1 = torch.tensor([obs.next_state[-1] for obs in observations], dtype=torch.float32, device=self.device)
+
+        actions_0_onehot = F.one_hot(actions_0, num_classes=self.num_actions).float()
+
+        states_1_tile = states_1.unsqueeze(1).repeat(1, self.num_actions, 1)
+        actions_1_onehot = F.one_hot(torch.arange(self.num_actions, device=self.device), num_classes=self.num_actions).unsqueeze(0).repeat(len(states_1), 1, 1)
+        actor_inputs_1 = torch.cat([states_1_tile, actions_1_onehot], dim=-1).view(-1, self.input_dim + self.num_actions)
+
         with torch.no_grad():
-            p_rewards_0 = self.model(states_0)
-        actions_1 = torch.tensor([int(obs.action) for obs in observations], dtype=torch.long, device=self.device)
-        indices = torch.stack([torch.arange(len(actions_1), device=self.device), actions_1], dim=1)
-        p_rewards_0 = p_rewards_0.clone()
-        p_rewards_0[indices[:,0], indices[:,1]] = values.squeeze()
+            p_rewards_2 = self.model(actor_inputs_1)
+        p_rewards_2 = torch.max(p_rewards_2.view(-1, self.num_actions), dim=1)[0].view(-1, 1)
+
+
+        values_0 = calculate_value(states_0).view(-1, 1)
+        values_1 = calculate_value(states_1).view(-1, 1)
+        current_values = (1 - self.discount_factor) * values_1
+        future_values = self.discount_factor * p_rewards_2
+
+
+        print(p_rewards_2[0:10].cpu().numpy().flatten())
+        print(values_1[0:10].cpu().numpy().flatten())
+        print(current_values[0:10].cpu().numpy().flatten())
+        print(future_values[0:10].cpu().numpy().flatten())
+        exit()
+
+        values = current_values + future_values
+
+        done_indicies = (dones_1 == 1.0).nonzero(as_tuple=True)[0]
+        values[done_indicies] = values_1[done_indicies]
 
         for _ in range(4):
             self.optimizer.zero_grad()
-            outputs = self.model(states_0)
-            loss = self.criterion(outputs, p_rewards_0)
+            model_input = torch.cat([states_0, actions_0_onehot], dim=-1)
+            outputs = self.model(model_input)
+            loss = self.criterion(outputs, values)
             loss.backward()
             self.optimizer.step()
 
@@ -158,17 +135,22 @@ class ActorModel:
     def get_optimal_action(self, obs):
         self.model.eval()
         sensors = torch.tensor([obs], dtype=torch.float32, device=self.device)
+        sensors_tile = sensors.unsqueeze(1).repeat(1, self.num_actions, 1)
+        actions_arange = torch.arange(self.num_actions, device=self.device)
+        actions_onehot = F.one_hot(actions_arange, num_classes=self.num_actions)
+        actions_tile = actions_onehot.unsqueeze(0).repeat(len(sensors), 1, 1)
+        actor_inputs = torch.cat([sensors_tile, actions_tile], dim=-1).view(-1, self.input_dim + self.num_actions)
         with torch.no_grad():
-            action_values = self.model(sensors)[0]
-        # prediction_np = prediction0.cpu().numpy()
+            action_values = self.model(actor_inputs)
 
         # greedy action selection
         action1 = torch.argmax(action_values).item()
 
         # stochastic action selection
-        action2 = torch.multinomial(action_values, num_samples=1).item()
+        action_softmax = F.softmax(action_values.view(-1), dim=0)
+        action2 = torch.multinomial(action_softmax, num_samples=1).item()
 
         # 5% chance to explore
         action = action2 if np.random.rand() < 0.05 else action1
         
-        return int(action), action_values.cpu().numpy()
+        return int(action), action_values.view(-1).cpu().numpy()

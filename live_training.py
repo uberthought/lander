@@ -51,13 +51,13 @@ def train(env, actor_model: ActorModel, episodes, train_every_n_episodes, video_
                 fuel -= 1
 
             # if done, use the previous observation and add the legs and fuel level
-            # if done or truncated:
-            #     next_obs[0] = obs[0]
-            #     next_obs[1] = obs[1]
-            #     next_obs[2] = obs[2]
-            #     next_obs[3] = obs[3]
-            #     next_obs[4] = obs[4]
-            #     next_obs[5] = obs[5]
+            if done or truncated:
+                next_obs[0] = obs[0]
+                next_obs[1] = obs[1]
+                next_obs[2] = obs[2]
+                next_obs[3] = obs[3]
+                next_obs[4] = obs[4]
+                next_obs[5] = obs[5]
 
             # if legs are down, consider episode done
             # legs_down = next_obs[6] == 1 and next_obs[7] == 1 and obs[6] == 1 and obs[7] == 1
