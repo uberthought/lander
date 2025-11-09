@@ -19,7 +19,13 @@ class ActorNet(nn.Module):
         self.nodes = nodes
         self.layers = layers
         
-        self.input = nn.Linear(self.input_dim + self.num_actions, nodes)
+        self.input = nn.Sequential(
+            nn.Linear(self.input_dim + self.num_actions, nodes),
+            nn.Linear(nodes, nodes),
+            nn.LeakyReLU(),
+            nn.Linear(nodes, nodes),
+            nn.LeakyReLU()
+        )
 
         self.skip_layers = nn.ModuleList([
             nn.Sequential(
