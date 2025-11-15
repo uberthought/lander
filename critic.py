@@ -58,7 +58,6 @@ class CriticNet(nn.Module):
 
 class CriticModel:
     def __init__(self, discount_factor=0.95, model_path="models/critic_model.pt"):
-        self.model_path = model_path
         self.q1_model_path = model_path.replace('.pt', '_q1.pt')
         self.q2_model_path = model_path.replace('.pt', '_q2.pt')
         self.input_dim = 10
@@ -81,10 +80,6 @@ class CriticModel:
         self.q2_optimizer = optim.Adam(self.q2_model.parameters())
         self.criterion = nn.MSELoss()
         
-        # Keep backward compatibility - model refers to q1_model
-        self.model = self.q1_model
-        self.optimizer = self.q1_optimizer
-
     def set_actor_model(self, actor_model):
         self.actor_model = actor_model
     
@@ -105,9 +100,7 @@ class CriticModel:
     def _create_model(self):
         return CriticNet(self.input_dim, self.num_actions, self.nodes, self.layers)
 
-    def _load_model(self, model_path=None):
-        if model_path is None:
-            model_path = self.model_path
+    def _load_model(self, model_path):
         if os.path.exists(model_path):
             model = CriticNet(self.input_dim, self.num_actions, self.nodes, self.layers)
             model.load_state_dict(torch.load(model_path, map_location="cpu"))
@@ -185,12 +178,6 @@ class CriticModel:
             torch.save(self.q2_model.state_dict(), tmp_path2)
             os.replace(tmp_path1, self.q1_model_path)
             os.replace(tmp_path2, self.q2_model_path)
-            
-            # Also save Q1 as the main model for backward compatibility
-            fd_main, tmp_path_main = tempfile.mkstemp(prefix='.tmp_critic_', suffix='.pt', dir=os.path.dirname(self.model_path) or '.')
-            os.close(fd_main)
-            torch.save(self.q1_model.state_dict(), tmp_path_main)
-            os.replace(tmp_path_main, self.model_path)
             
         except KeyboardInterrupt:
             for tmp_path in [tmp_path1, tmp_path2]:

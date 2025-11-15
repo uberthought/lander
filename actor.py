@@ -90,7 +90,7 @@ class ActorModel:
         actions_onehot_tiled = torch.eye(self.num_actions, device=self.device).repeat(len(observations), 1)
 
         with torch.no_grad():
-            predicted_rewards = self.critic_model.model(sensors_1_tiled, actions_onehot_tiled)
+            predicted_rewards = self.critic_model.q1_model(sensors_1_tiled, actions_onehot_tiled)
             predicted_rewards = predicted_rewards.view(len(observations), self.num_actions)
             predicted_actions = torch.argmax(predicted_rewards, dim=1)
         
@@ -126,9 +126,9 @@ class ActorModel:
         prediction_np = prediction0.cpu().numpy()
 
         # greedy action selection
-        # action = np.argmax(prediction_np)
+        action = np.argmax(prediction_np)
 
         # stochastic action selection
-        action = np.random.choice(self.num_actions, p=prediction_np)
+        # action = np.random.choice(self.num_actions, p=prediction_np)
         
         return int(action), prediction_np

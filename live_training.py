@@ -94,7 +94,7 @@ def train(env, actor_model: ActorModel, critic_model: CriticModel, episodes, tra
             # sensors_tiled = np.tile(obs.reshape((1, -1)), (critic_model.num_actions, 1))
             # sensors_tiled_tensor = torch.tensor(sensors_tiled, dtype=torch.float32, device=critic_model.device)
             # actions_onehot_tensor = torch.tensor(actions_onehot, dtype=torch.float32, device=critic_model.device)
-            # critic_predictions = critic_model.model(sensors_tiled_tensor, actions_onehot_tensor).cpu().detach().numpy().flatten()
+            # critic_predictions = critic_model.q1_model(sensors_tiled_tensor, actions_onehot_tensor).cpu().detach().numpy().flatten()
             # print(f"value: {value1:.4f}  critic: {critic_predictions}  actor: {actor_prediction} next_obs: {next_obs[0:6]}")
 
 
