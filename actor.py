@@ -43,7 +43,6 @@ class ActorNet(nn.Module):
             nn.LeakyReLU(),
             nn.Linear(nodes, num_actions),
             nn.Softmax(dim=-1)
-            # nn.Sigmoid()
         )
 
     def forward(self, x):
@@ -126,9 +125,9 @@ class ActorModel:
         prediction_np = prediction0.cpu().numpy()
 
         # greedy action selection
-        action = np.argmax(prediction_np)
+        # action = np.argmax(prediction_np)
 
         # stochastic action selection
-        # action = np.random.choice(self.num_actions, p=prediction_np)
-        
+        action = np.random.choice(self.num_actions, p=prediction_np)
+
         return int(action), prediction_np

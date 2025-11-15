@@ -64,7 +64,7 @@ class CriticModel:
         self.num_actions = 4
         self.discount_factor = discount_factor
         self.nodes = self.input_dim * self.num_actions * 4
-        self.layers = 4
+        self.layers = 8
 
         self.device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
         
