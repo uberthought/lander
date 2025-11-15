@@ -50,19 +50,17 @@ def train(env, actor_model: ActorModel, critic_model: CriticModel, episodes, tra
             t += 1
             action, prediction = actor_model.get_optimal_action(obs)
 
-            # example of no-op action
-            # action0 = np.array([0.0, 0.0], dtype=np.float32)
+
 
             # actual action for continuous LunarLander-v3 based on discrete action
             if action == 0:
                 action0 = np.array([0.0, 0.0], dtype=np.float32)  # do nothing
             elif action == 1:
-                action0 = np.array([1.0, 0.0], dtype=np.float32)  # right main thruster
+                action0 = np.array([0.0, 1.0], dtype=np.float32)  # right thruster
             elif action == 2:
-                action0 = np.array([0.0, 1.0], dtype=np.float32)  # main thruster
+                action0 = np.array([1.0, 0.0], dtype=np.float32)  # main thruster
             elif action == 3:
-                action0 = np.array([-1.0, 0.0], dtype=np.float32)  # left main thruster
-
+                action0 = np.array([0.0, -1.0], dtype=np.float32)  # left thruster
             next_obs, _, done, truncated, _ = env.step(action0)
 
             # normalize the next observation
@@ -93,20 +91,20 @@ def train(env, actor_model: ActorModel, critic_model: CriticModel, episodes, tra
 
             value1 = calculate_value(torch.tensor(next_obs.reshape(1, -1), dtype=torch.float32, device=actor_model.device)).item()
 
-            # main_thruster_emoji = "▼"
-            # right_thruster_emoji = "▶"
-            # left_thruster_emoji = "◀"
-            # no_op_emoji = " "
-            # rocket = no_op_emoji if action == 0 else right_thruster_emoji if action == 1 else main_thruster_emoji if action == 2 else left_thruster_emoji
-            # print(f"Episode: {episode+1}/{episodes}, Step: {t}, Value: {value1:.4f}, Rocket: {rocket}, Prediction: {prediction}")
+            main_thruster_emoji = "▼"
+            right_thruster_emoji = "▶"
+            left_thruster_emoji = "◀"
+            no_op_emoji = " "
+            rocket = no_op_emoji if action == 0 else right_thruster_emoji if action == 1 else main_thruster_emoji if action == 2 else left_thruster_emoji
+            print(f"Episode: {episode+1}/{episodes}, Step: {t}, Value: {value1:.4f}, Rocket: {rocket}, Prediction: {prediction}")
 
-            actions = np.arange(critic_model.num_actions)
-            actions_onehot = np.eye(critic_model.num_actions)[actions]
-            sensors_tiled = np.tile(obs.reshape((1, -1)), (critic_model.num_actions, 1))
-            sensors_tiled_tensor = torch.tensor(sensors_tiled, dtype=torch.float32, device=critic_model.device)
-            actions_onehot_tensor = torch.tensor(actions_onehot, dtype=torch.float32, device=critic_model.device)
-            critic_predictions = critic_model.q1_model(sensors_tiled_tensor, actions_onehot_tensor).cpu().detach().numpy().flatten()
-            print(f"value: {value1:.4f}  critic: {critic_predictions}  actor: {prediction} next_obs: {next_obs[0:6]}")
+            # actions = np.arange(critic_model.num_actions)
+            # actions_onehot = np.eye(critic_model.num_actions)[actions]
+            # sensors_tiled = np.tile(obs.reshape((1, -1)), (critic_model.num_actions, 1))
+            # sensors_tiled_tensor = torch.tensor(sensors_tiled, dtype=torch.float32, device=critic_model.device)
+            # actions_onehot_tensor = torch.tensor(actions_onehot, dtype=torch.float32, device=critic_model.device)
+            # critic_predictions = critic_model.q1_model(sensors_tiled_tensor, actions_onehot_tensor).cpu().detach().numpy().flatten()
+            # print(f"value: {value1:.4f}  critic: {critic_predictions}  actor: {prediction} next_obs: {next_obs[0:6]}")
 
 
             obs = next_obs
@@ -166,6 +164,7 @@ def main():
 
     np.set_printoptions(formatter={'float': lambda x: "{0:+0.4f}".format(x)})
 
+    # env = gym.make("LunarLander-v3", render_mode="rgb_array")
     env = gym.make("LunarLander-v3", continuous=True, render_mode="rgb_array")
     env = RecordVideo(env, video_folder="./videos", episode_trigger=lambda x: True, disable_logger=True)
     actor_model = ActorModel()
