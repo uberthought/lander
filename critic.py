@@ -64,13 +64,14 @@ class CriticModel:
         self.num_actions = 4
         self.discount_factor = discount_factor
         self.nodes = self.input_dim * self.num_actions * 4
-        self.layers = 4
+        self.q1_layers = 8
+        self.q2_layers = 16
 
         self.device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
         
         # Create two Q-networks (Q1 and Q2)
-        self.q1_model = self._load_model(self.q1_model_path) or self._create_model()
-        self.q2_model = self._load_model(self.q2_model_path) or self._create_model()
+        self.q1_model = self._load_q1_model() or self._create_q1_model()
+        self.q2_model = self._load_q2_model() or self._create_q2_model()
         
         self.q1_model.to(self.device)
         self.q2_model.to(self.device)
@@ -97,15 +98,27 @@ class CriticModel:
         q1_values, q2_values = self.get_q_values(states, actions)
         return torch.min(q1_values, q2_values)
 
-    def _create_model(self):
-        return CriticNet(self.input_dim, self.num_actions, self.nodes, self.layers)
+    def _create_model(self, layers):
+        return CriticNet(self.input_dim, self.num_actions, self.nodes, layers)
 
-    def _load_model(self, model_path):
+    def _load_model(self, model_path, layers):
         if os.path.exists(model_path):
-            model = CriticNet(self.input_dim, self.num_actions, self.nodes, self.layers)
+            model = CriticNet(self.input_dim, self.num_actions, self.nodes, layers)
             model.load_state_dict(torch.load(model_path, map_location="cpu"))
             return model
         return None
+
+    def _create_q1_model(self):
+        return self._create_model(self.q1_layers)
+
+    def _create_q2_model(self):
+        return self._create_model(self.q2_layers)
+
+    def _load_q1_model(self):
+        return self._load_model(self.q1_model_path, self.q1_layers)
+
+    def _load_q2_model(self):
+        return self._load_model(self.q2_model_path, self.q2_layers)
 
     def train(self, observations):
         self.q1_model.train()
@@ -145,7 +158,7 @@ class CriticModel:
 
         immediate_reward = values_1 - values_0
         future_reward = self.discount_factor * min_q_next
-        target_values = immediate_reward + future_reward
+        target_values = immediate_reward * 10 + future_reward
 
         # For done indices, set target values to values_1
         dones = dones.view(-1, 1)

@@ -91,20 +91,20 @@ def train(env, actor_model: ActorModel, critic_model: CriticModel, episodes, tra
 
             value1 = calculate_value(torch.tensor(next_obs.reshape(1, -1), dtype=torch.float32, device=actor_model.device)).item()
 
-            main_thruster_emoji = "▼"
-            right_thruster_emoji = "▶"
-            left_thruster_emoji = "◀"
-            no_op_emoji = " "
-            rocket = no_op_emoji if action == 0 else right_thruster_emoji if action == 1 else main_thruster_emoji if action == 2 else left_thruster_emoji
-            print(f"Episode: {episode+1}/{episodes}, Step: {t}, Value: {value1:.4f}, Rocket: {rocket}, Prediction: {prediction}")
+            # main_thruster_emoji = "▼"
+            # right_thruster_emoji = "▶"
+            # left_thruster_emoji = "◀"
+            # no_op_emoji = " "
+            # rocket = no_op_emoji if action == 0 else right_thruster_emoji if action == 1 else main_thruster_emoji if action == 2 else left_thruster_emoji
+            # print(f"Episode: {episode+1}/{episodes}, Step: {t}, Value: {value1:.4f}, Rocket: {rocket}, Prediction: {prediction}")
 
-            # actions = np.arange(critic_model.num_actions)
-            # actions_onehot = np.eye(critic_model.num_actions)[actions]
-            # sensors_tiled = np.tile(obs.reshape((1, -1)), (critic_model.num_actions, 1))
-            # sensors_tiled_tensor = torch.tensor(sensors_tiled, dtype=torch.float32, device=critic_model.device)
-            # actions_onehot_tensor = torch.tensor(actions_onehot, dtype=torch.float32, device=critic_model.device)
-            # critic_predictions = critic_model.q1_model(sensors_tiled_tensor, actions_onehot_tensor).cpu().detach().numpy().flatten()
-            # print(f"value: {value1:.4f}  critic: {critic_predictions}  actor: {prediction} next_obs: {next_obs[0:6]}")
+            actions = np.arange(critic_model.num_actions)
+            actions_onehot = np.eye(critic_model.num_actions)[actions]
+            sensors_tiled = np.tile(obs.reshape((1, -1)), (critic_model.num_actions, 1))
+            sensors_tiled_tensor = torch.tensor(sensors_tiled, dtype=torch.float32, device=critic_model.device)
+            actions_onehot_tensor = torch.tensor(actions_onehot, dtype=torch.float32, device=critic_model.device)
+            critic_predictions = critic_model.q1_model(sensors_tiled_tensor, actions_onehot_tensor).cpu().detach().numpy().flatten()
+            print(f"value: {value1:.4f}  critic: {critic_predictions}  actor: {prediction} next_obs: {next_obs[0:6]}")
 
 
             obs = next_obs
@@ -133,8 +133,8 @@ def train(env, actor_model: ActorModel, critic_model: CriticModel, episodes, tra
         # if it's time to train the model, do so
 
         if do_training:
-            # sample_len = len(replay_buffer0) * 32
-            sample_len = 2 ** 16
+            sample_len = len(replay_buffer0) * 32
+            # sample_len = 2 ** 14
             replay_buffer0 = list(replay_buffer0)
             for k in range(32):
                 print(f"Training iteration {k} discount_factor={critic_model.discount_factor}...")
