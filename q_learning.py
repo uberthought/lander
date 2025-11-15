@@ -8,10 +8,10 @@ import tempfile
 
 from observation import calculate_value
 
-# PyTorch Actor Model
+# PyTorch QLearning Model
 # input is the current state plus the action one-hot encoded
 # output is the predicted reward for the action
-class ActorNet(nn.Module):
+class QLearningNet(nn.Module):
     def __init__(self, input_dim, num_actions, nodes, layers):
         super().__init__()
         self.input_dim = input_dim
@@ -41,9 +41,7 @@ class ActorNet(nn.Module):
             nn.LeakyReLU(),
             nn.Linear(nodes, nodes),
             nn.LeakyReLU(),
-            nn.Linear(nodes, 1),
-            # nn.Sigmoid()
-            # nn.Tanh()
+            nn.Linear(nodes, 1)
         )
 
     def forward(self, x):
@@ -54,16 +52,17 @@ class ActorNet(nn.Module):
         return x
 
 
-class ActorModel:
-    def __init__(self, discount_factor=0.95, model_path="models/actor_model.pt"):
+class QLearningModel:
+    def __init__(self, discount_factor=0.95, model_path="models/qlearning_model.pt"):
         self.discount_factor = discount_factor
         self.model_path = model_path
         self.q1_model_path = model_path.replace(".pt", "_q1.pt")
         self.q2_model_path = model_path.replace(".pt", "_q2.pt")
         self.input_dim = 10
         self.num_actions = 4
-        self.nodes = self.input_dim * self.num_actions * 4
-        self.layers = 4
+        self.nodes = self.input_dim * self.num_actions * 2
+        self.q1_layers = 16
+        self.q2_layers = 8
 
         self.device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
         self.q1_model, self.q2_model = self._load_models() or self._create_models()
@@ -74,14 +73,14 @@ class ActorModel:
         self.criterion = nn.MSELoss()
 
     def _create_models(self):
-        q1_model = ActorNet(self.input_dim, self.num_actions, self.nodes, self.layers)
-        q2_model = ActorNet(self.input_dim, self.num_actions, self.nodes, self.layers)
+        q1_model = QLearningNet(self.input_dim, self.num_actions, self.nodes, self.q1_layers)
+        q2_model = QLearningNet(self.input_dim, self.num_actions, self.nodes, self.q2_layers)
         return q1_model, q2_model
 
     def _load_models(self):
         if os.path.exists(self.q1_model_path) and os.path.exists(self.q2_model_path):
-            q1_model = ActorNet(self.input_dim, self.num_actions, self.nodes, self.layers)
-            q2_model = ActorNet(self.input_dim, self.num_actions, self.nodes, self.layers)
+            q1_model = QLearningNet(self.input_dim, self.num_actions, self.nodes, self.q1_layers)
+            q2_model = QLearningNet(self.input_dim, self.num_actions, self.nodes, self.q2_layers)
             q1_model.load_state_dict(torch.load(self.q1_model_path, map_location="cpu"))
             q2_model.load_state_dict(torch.load(self.q2_model_path, map_location="cpu"))
             return q1_model, q2_model
@@ -101,22 +100,19 @@ class ActorModel:
 
         states_1_tile = states_1.unsqueeze(1).repeat(1, self.num_actions, 1)
         actions_1_onehot = F.one_hot(torch.arange(self.num_actions, device=self.device), num_classes=self.num_actions).unsqueeze(0).repeat(len(states_1), 1, 1)
-        actor_inputs_1 = torch.cat([states_1_tile, actions_1_onehot], dim=-1).view(-1, self.input_dim + self.num_actions)
+        inputs_1 = torch.cat([states_1_tile, actions_1_onehot], dim=-1).view(-1, self.input_dim + self.num_actions)
 
         with torch.no_grad():
-            q1_values_2 = self.q1_model(actor_inputs_1).view(-1, self.num_actions)
-            q2_values_2 = self.q2_model(actor_inputs_1).view(-1, self.num_actions)
+            q1_values_2 = self.q1_model(inputs_1).view(-1, self.num_actions)
+            q2_values_2 = self.q2_model(inputs_1).view(-1, self.num_actions)
 
         # Use minimum of the two Q-values (SAC approach)
-        # p_values_2 = torch.min(q1_values_2, q2_values_2)
-        p_values_2 = torch.max(q1_values_2, dim=1)[0].view(-1, 1)
+        p_values_2 = torch.min(q1_values_2, q2_values_2)
+        p_values_2 = torch.max(p_values_2, dim=1)[0].view(-1, 1)
 
-        values_0 = calculate_value(states_0).view(-1, 1)
         values_1 = calculate_value(states_1).view(-1, 1)
-        # current_values = (1 - self.discount_factor) * values_1
-        current_values = values_1 - values_0
         future_values = self.discount_factor * p_values_2
-        values = current_values + future_values
+        values = values_1 + future_values
 
         done_indicies = (dones_1 == 1.0).nonzero(as_tuple=True)[0]
         values[done_indicies] = values_1[done_indicies]
@@ -140,10 +136,10 @@ class ActorModel:
 
     def save(self):
         # Save Q1 model
-        fd1, tmp_path1 = tempfile.mkstemp(prefix='.tmp_actor_q1_', suffix='.pt', dir=os.path.dirname(self.q1_model_path) or '.')
+        fd1, tmp_path1 = tempfile.mkstemp(prefix='.tmp_qlearning_q1_', suffix='.pt', dir=os.path.dirname(self.q1_model_path) or '.')
         os.close(fd1)
         # Save Q2 model
-        fd2, tmp_path2 = tempfile.mkstemp(prefix='.tmp_actor_q2_', suffix='.pt', dir=os.path.dirname(self.q2_model_path) or '.')
+        fd2, tmp_path2 = tempfile.mkstemp(prefix='.tmp_qlearning_q2_', suffix='.pt', dir=os.path.dirname(self.q2_model_path) or '.')
         os.close(fd2)
         try:
             torch.save(self.q1_model.state_dict(), tmp_path1)
@@ -164,23 +160,16 @@ class ActorModel:
             raise
 
     def get_optimal_action(self, obs):
-        action_values = self.get_all_actions(obs)
+        action_values = self.get_all_actions(obs).view(-1)
 
         # greedy action selection
-        # action1 = torch.argmax(action_values).item()
+        action = torch.argmax(action_values).item()
 
         # stochastic action selection
-        action_softmax = F.softmax(action_values.view(-1), dim=0)
-        action2 = torch.multinomial(action_softmax, num_samples=1).item()
+        # action_softmax = F.softmax(action_values, dim=0)
+        # action = torch.multinomial(action_softmax, num_samples=1).item()
 
-        action = action2
-
-        # 5% chance to explore
-        # action = action2 if np.random.rand() < 0.05 else action1
-
-
-        
-        return int(action), action_values.view(-1).cpu().numpy()
+        return int(action), action_values.cpu().numpy()
 
     def get_all_actions(self, obs):
         self.q1_model.eval()
@@ -189,8 +178,8 @@ class ActorModel:
         actions_arange = torch.arange(self.num_actions, device=self.device)
         actions_onehot = F.one_hot(actions_arange, num_classes=self.num_actions)
         actions_tile = actions_onehot.unsqueeze(0).repeat(len(sensors), 1, 1)
-        actor_inputs = torch.cat([sensors_tile, actions_tile], dim=-1).view(-1, self.input_dim + self.num_actions)
+        inputs = torch.cat([sensors_tile, actions_tile], dim=-1).view(-1, self.input_dim + self.num_actions)
         with torch.no_grad():
-            action_values = self.q1_model(actor_inputs)
+            action_values = self.q1_model(inputs)
 
         return action_values
