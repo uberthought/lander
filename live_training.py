@@ -40,6 +40,11 @@ def train(env, actor_model: ActorModel, episodes, train_every_n_episodes, video_
         obs = np.concatenate((obs, [1.0, 0.0]))  # fuel level and not done
 
         fuel = 1000
+
+        rl_video_files = [f for f in os.listdir(video_folder) if f.startswith("rl-video-episode-") and f.endswith(".mp4")]
+        for rl_video_file in rl_video_files:
+            os.remove(os.path.join(video_folder, rl_video_file))
+
     
         #########
         # Live testing loop start
@@ -112,9 +117,6 @@ def train(env, actor_model: ActorModel, episodes, train_every_n_episodes, video_
         json_files = [f for f in os.listdir(video_folder) if f.endswith(".json")]
         for json_file in json_files:
             os.remove(os.path.join(video_folder, json_file))
-        rl_video_files = [f for f in os.listdir(video_folder) if f.startswith("rl-video-episode-") and f.endswith(".mp4")]
-        for rl_video_file in rl_video_files:
-            os.remove(os.path.join(video_folder, rl_video_file))
 
         # if it's time to train the model, do so
 
