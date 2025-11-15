@@ -59,6 +59,8 @@ class CriticNet(nn.Module):
 class CriticModel:
     def __init__(self, discount_factor=0.95, model_path="models/critic_model.pt"):
         self.model_path = model_path
+        self.q1_model_path = model_path.replace('.pt', '_q1.pt')
+        self.q2_model_path = model_path.replace('.pt', '_q2.pt')
         self.input_dim = 10
         self.num_actions = 4
         self.discount_factor = discount_factor
@@ -66,26 +68,56 @@ class CriticModel:
         self.layers = 4
 
         self.device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
-        self.model = self._load_model() or self._create_model()
-        self.model.to(self.device)
-        self.optimizer = optim.Adam(self.model.parameters())
+        
+        # Create two Q-networks (Q1 and Q2)
+        self.q1_model = self._load_model(self.q1_model_path) or self._create_model()
+        self.q2_model = self._load_model(self.q2_model_path) or self._create_model()
+        
+        self.q1_model.to(self.device)
+        self.q2_model.to(self.device)
+        
+        # Separate optimizers for each network
+        self.q1_optimizer = optim.Adam(self.q1_model.parameters())
+        self.q2_optimizer = optim.Adam(self.q2_model.parameters())
         self.criterion = nn.MSELoss()
+        
+        # Keep backward compatibility - model refers to q1_model
+        self.model = self.q1_model
+        self.optimizer = self.q1_optimizer
 
     def set_actor_model(self, actor_model):
         self.actor_model = actor_model
+    
+    def get_q_values(self, states, actions):
+        """Get Q-values from both networks"""
+        self.q1_model.eval()
+        self.q2_model.eval()
+        with torch.no_grad():
+            q1_values = self.q1_model(states, actions)
+            q2_values = self.q2_model(states, actions)
+        return q1_values, q2_values
+    
+    def get_min_q_values(self, states, actions):
+        """Get minimum Q-values from both networks (SAC-style)"""
+        q1_values, q2_values = self.get_q_values(states, actions)
+        return torch.min(q1_values, q2_values)
 
     def _create_model(self):
         return CriticNet(self.input_dim, self.num_actions, self.nodes, self.layers)
 
-    def _load_model(self):
-        if os.path.exists(self.model_path):
+    def _load_model(self, model_path=None):
+        if model_path is None:
+            model_path = self.model_path
+        if os.path.exists(model_path):
             model = CriticNet(self.input_dim, self.num_actions, self.nodes, self.layers)
-            model.load_state_dict(torch.load(self.model_path, map_location="cpu"))
+            model.load_state_dict(torch.load(model_path, map_location="cpu"))
             return model
         return None
 
     def train(self, observations):
-        self.model.train()
+        self.q1_model.train()
+        self.q2_model.train()
+        
         actions = torch.tensor([int(obs.action) for obs in observations], dtype=torch.long, device=self.device)
         dones = torch.tensor([obs.next_state[-1] for obs in observations], dtype=torch.float32, device=self.device)
 
@@ -108,38 +140,66 @@ class CriticModel:
             p_actions = torch.argmax(p_actions_probs, dim=1)
         p_actions_hot = F.one_hot(p_actions, num_classes=self.num_actions).float()
 
-        # get the predicted values for the next state-action pairs
+        # get the predicted values for the next state-action pairs from both Q-networks
+        # Use the minimum of Q1 and Q2 for target calculation (SAC-style)
         with torch.no_grad():
-            p_values_2 = self.model(states_1, p_actions_hot)
-        p_values_2 = p_values_2.view(-1, 1)
+            q1_next = self.q1_model(states_1, p_actions_hot)
+            q2_next = self.q2_model(states_1, p_actions_hot)
+            min_q_next = torch.min(q1_next, q2_next)
+        min_q_next = min_q_next.view(-1, 1)
 
-        values = (1 - self.discount_factor) * values_1 + self.discount_factor * p_values_2
+        target_values = (1 - self.discount_factor) * values_1 + self.discount_factor * min_q_next
 
-        # For done indices, set values to values_1
+        # For done indices, set target values to values_1
         dones = dones.view(-1, 1)
         done_indices = (dones == 1.0).nonzero(as_tuple=True)[0]
-        values[done_indices] = values_1[done_indices]
+        target_values[done_indices] = values_1[done_indices]
 
-        # Train for 4 epochs
+        # Train both Q-networks for 4 epochs
         for _ in range(4):
-            self.optimizer.zero_grad()
-            outputs = self.model(states_0, actions_hot)
-            loss = self.criterion(outputs, values)
-            loss.backward()
-            self.optimizer.step()
+            # Train Q1 network
+            self.q1_optimizer.zero_grad()
+            q1_outputs = self.q1_model(states_0, actions_hot)
+            q1_loss = self.criterion(q1_outputs, target_values)
+            q1_loss.backward()
+            self.q1_optimizer.step()
+            
+            # Train Q2 network
+            self.q2_optimizer.zero_grad()
+            q2_outputs = self.q2_model(states_0, actions_hot)
+            q2_loss = self.criterion(q2_outputs, target_values)
+            q2_loss.backward()
+            self.q2_optimizer.step()
 
     def save(self):
-        fd, tmp_path = tempfile.mkstemp(prefix='.tmp_critic_', suffix='.pt', dir=os.path.dirname(self.model_path) or '.')
-        os.close(fd)
+        # Save Q1 network
+        fd1, tmp_path1 = tempfile.mkstemp(prefix='.tmp_critic_q1_', suffix='.pt', dir=os.path.dirname(self.q1_model_path) or '.')
+        os.close(fd1)
+        
+        # Save Q2 network
+        fd2, tmp_path2 = tempfile.mkstemp(prefix='.tmp_critic_q2_', suffix='.pt', dir=os.path.dirname(self.q2_model_path) or '.')
+        os.close(fd2)
+        
         try:
-            torch.save(self.model.state_dict(), tmp_path)
-            os.replace(tmp_path, self.model_path)
+            torch.save(self.q1_model.state_dict(), tmp_path1)
+            torch.save(self.q2_model.state_dict(), tmp_path2)
+            os.replace(tmp_path1, self.q1_model_path)
+            os.replace(tmp_path2, self.q2_model_path)
+            
+            # Also save Q1 as the main model for backward compatibility
+            fd_main, tmp_path_main = tempfile.mkstemp(prefix='.tmp_critic_', suffix='.pt', dir=os.path.dirname(self.model_path) or '.')
+            os.close(fd_main)
+            torch.save(self.q1_model.state_dict(), tmp_path_main)
+            os.replace(tmp_path_main, self.model_path)
+            
         except KeyboardInterrupt:
-            if os.path.exists(tmp_path):
-                os.remove(tmp_path)
+            for tmp_path in [tmp_path1, tmp_path2]:
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
             raise
         except Exception:
-            if os.path.exists(tmp_path):
-                os.remove(tmp_path)
+            for tmp_path in [tmp_path1, tmp_path2]:
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
             raise
 
