@@ -100,15 +100,21 @@ def train(env, actor_model: ActorModel, episodes, train_every_n_episodes, video_
 
         # save video with final value in the filename
 
-        video_path = env.video_recorder.path
+        env.reset()
+
+        video_path = f"{video_folder}/rl-video-episode-*.mp4"
+        video_name = [f for f in os.listdir(video_folder) if f.startswith("rl-video-episode-") and f.endswith(".mp4")][0]
+        video_path = os.path.join(video_folder, video_name)
         value1 = calculate_value(torch.tensor(next_obs.reshape(1, -1), dtype=torch.float32, device=actor_model.device)).item()
         video_name_with_final_value = f"{video_folder}/episode_{episode+1}_value_{value1:.4f}_t_{t}.mp4"
         shutil.move(video_path, video_name_with_final_value)
 
-        # remove every *.json file that's created alongside the video
         json_files = [f for f in os.listdir(video_folder) if f.endswith(".json")]
         for json_file in json_files:
             os.remove(os.path.join(video_folder, json_file))
+        rl_video_files = [f for f in os.listdir(video_folder) if f.startswith("rl-video-episode-") and f.endswith(".mp4")]
+        for rl_video_file in rl_video_files:
+            os.remove(os.path.join(video_folder, rl_video_file))
 
         # if it's time to train the model, do so
 
