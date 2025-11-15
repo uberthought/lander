@@ -43,7 +43,7 @@ class CriticNet(nn.Module):
             nn.Linear(nodes, nodes),
             nn.LeakyReLU(),
             nn.Linear(nodes, 1),
-            nn.Sigmoid()
+            nn.Tanh()
         )
 
     def forward(self, state, action):
@@ -64,7 +64,7 @@ class CriticModel:
         self.num_actions = 4
         self.discount_factor = discount_factor
         self.nodes = self.input_dim * self.num_actions * 4
-        self.layers = 8
+        self.layers = 4
 
         self.device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
         
@@ -120,8 +120,8 @@ class CriticModel:
         actions_hot = F.one_hot(actions, num_classes=self.num_actions).float()
 
         # calculate the values for the current states
-        # values_0 = calculate_value(states_0)
-        # values_0 = values_0.view(-1, 1)
+        values_0 = calculate_value(states_0)
+        values_0 = values_0.view(-1, 1)
 
         # calculate the values for the next states
         values_1 = calculate_value(states_1)
@@ -141,7 +141,11 @@ class CriticModel:
             min_q_next = torch.min(q1_next, q2_next)
         min_q_next = min_q_next.view(-1, 1)
 
-        target_values = (1 - self.discount_factor) * values_1 + self.discount_factor * min_q_next
+        # target_values = (1 - self.discount_factor) * values_1 + self.discount_factor * min_q_next
+
+        immediate_reward = values_1 - values_0
+        future_reward = self.discount_factor * min_q_next
+        target_values = immediate_reward + future_reward
 
         # For done indices, set target values to values_1
         dones = dones.view(-1, 1)
