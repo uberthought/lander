@@ -5,7 +5,7 @@ from actor import ActorModel
 from ReplayBuffer import ReplayBuffer
 
 def main():
-    parser = argparse.ArgumentParser(description="Live training for the LunarLander-v2 environment.")
+    parser = argparse.ArgumentParser(description="Live training for the LunarLander-v3 environment.")
     parser.add_argument("--episodes", type=int, default=8, help="Number of training episodes")
     parser.add_argument('--discount-factor', type=float, default=0.95, help='Discount factor for future rewards')
     parser.add_argument('--sample-size', type=int, default=18, help='Number of samples for training')

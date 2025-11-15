@@ -12,14 +12,14 @@ from actor import ActorModel
 from ReplayBuffer import ReplayBuffer
 
 # Define the normalization factors for the observation space
-# These values are based on the observation space of the LunarLander-v2 environment
+# These values are based on the observation space of the LunarLander-v3 environment
 # and are used to scale the observations to a range of approximately [-1, 1]
 # x, y, v_x, v_y, angle, v_angle
 NORMALIZATION_FACTORS = np.array([1, 1.75, 4, 4, 3.1415927, 5, 1, 1], dtype=np.float32)
 
 def train(env, actor_model: ActorModel, episodes, train_every_n_episodes, video_folder):
     # Main long-term buffer (persistent) and recent buffer for on-policy-ish updates
-    # State shape is 9: 8 from LunarLander-v2 + 1 for done flag
+    # State shape is 9: 8 from LunarLander-v3 + 1 for done flag
     replay_buffer = ReplayBuffer(state_shape=(10,))
     replay_buffer0 = deque(maxlen=40000)
 
@@ -132,7 +132,7 @@ def train(env, actor_model: ActorModel, episodes, train_every_n_episodes, video_
                 print(f"Autosave failed: {e}")
 
 def main():
-    parser = argparse.ArgumentParser(description="Live training for the LunarLander-v2 environment.")
+    parser = argparse.ArgumentParser(description="Live training for the LunarLander-v3 environment.")
     parser.add_argument("--episodes", type=int, default=128, help="Number of training episodes")
     parser.add_argument('--train-every', type=int, default=4, help='Number of episodes between training sessions')
     parser.add_argument('--discount-factor', type=float, default=0.95, help='Discount factor for future rewards')
@@ -142,7 +142,7 @@ def main():
 
     np.set_printoptions(formatter={'float': lambda x: "{0:+0.4f}".format(x)})
 
-    env = gym.make("LunarLander-v2", render_mode="rgb_array")
+    env = gym.make("LunarLander-v3", render_mode="rgb_array")
     env = RecordVideo(env, video_folder="./videos", episode_trigger=lambda x: True, disable_logger=True)
     actor_model = ActorModel(discount_factor=discount_factor)
 
