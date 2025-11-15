@@ -12,6 +12,12 @@ from observation import Observation, calculate_value
 from actor import ActorModel
 from ReplayBuffer import ReplayBuffer
 
+# Define the normalization factors for the observation space
+# These values are based on the observation space of the LunarLander-v2 environment
+# and are used to scale the observations to a range of approximately [-1, 1]
+# x, y, v_x, v_y, angle, v_angle
+NORMALIZATION_FACTORS = np.array([1, 1.75, 4, 4, 3.1415927, 5, 1, 1], dtype=np.float32)
+
 def train(env, actor_model: ActorModel, critic_model: CriticModel, episodes, train_every_n_episodes, video_folder):
     # Main long-term buffer (persistent) and recent buffer for on-policy-ish updates
     # State shape is 9: 8 from LunarLander-v2 + 1 for done flag
@@ -31,8 +37,7 @@ def train(env, actor_model: ActorModel, critic_model: CriticModel, episodes, tra
         do_training = (episode + 1) > 0 and (episode + 1) % train_every_n_episodes == 0
 
         obs, _ = env.reset()
-        obs = np.array(obs, dtype=np.float32)
-        # obs = np.append(obs, 0)  #  fuel level and not done
+        obs = normalize_observation(obs)
         obs = np.concatenate((obs, [1.0, 0.0]))  # fuel level and not done
 
         fuel = 1000
@@ -47,29 +52,24 @@ def train(env, actor_model: ActorModel, critic_model: CriticModel, episodes, tra
 
             next_obs, _, done, truncated, _ = env.step(action)
 
+            # normalize the next observation
+            next_obs = normalize_observation(next_obs)
+
+            # if done, use the previous observation and add the legs and fuel level
+            if done or truncated:
+                next_obs[0] = obs[0]
+                next_obs[1] = obs[1]
+                next_obs[2] = obs[2]
+                next_obs[3] = obs[3]
+                next_obs[4] = obs[4]
+                next_obs[5] = obs[5]
+
             # if the action is not to do nothing, decrease fuel
             if action != 0:
                 fuel -= 1
 
-            # if done, use the previous observation and add the legs and fuel level
-            # if done or truncated:
-            #     next_obs[0] = obs[0]
-            #     next_obs[1] = obs[1]
-            #     next_obs[2] = obs[2]
-            #     next_obs[3] = obs[3]
-            #     next_obs[4] = obs[4]
-            #     next_obs[5] = obs[5]
-
-            # if legs are down, consider episode done
-            # legs_down = next_obs[6] == 1 and next_obs[7] == 1 and obs[6] == 1 and obs[7] == 1
-            # if legs_down:
-            #     while not done and not truncated:
-            #         _, _, done, truncated, _ = env.step(0)
-            #     done = True
-
             done = done or truncated
 
-            next_obs = np.array(next_obs, dtype=np.float32)
             # add the fuel level and done to the observation
             next_obs = np.concatenate((next_obs, [fuel / 1000.0, 1.0 if done else 0.0]))
 
@@ -95,7 +95,7 @@ def train(env, actor_model: ActorModel, critic_model: CriticModel, episodes, tra
             # sensors_tiled_tensor = torch.tensor(sensors_tiled, dtype=torch.float32, device=critic_model.device)
             # actions_onehot_tensor = torch.tensor(actions_onehot, dtype=torch.float32, device=critic_model.device)
             # critic_predictions = critic_model.model(sensors_tiled_tensor, actions_onehot_tensor).cpu().detach().numpy().flatten()
-            # print(f"value: {value1:.4f}  critic: {critic_predictions}  actor: {actor_prediction}")
+            # print(f"value: {value1:.4f}  critic: {critic_predictions}  actor: {actor_prediction} next_obs: {next_obs[0:6]}")
 
 
             obs = next_obs
@@ -161,6 +161,12 @@ def main():
     train(env, actor_model, critic_model, episodes, train_every, video_folder="./videos")
 
     env.close()
+
+def normalize_observation(obs):
+    obs = np.array(obs, dtype=np.float32)
+    obs = obs / NORMALIZATION_FACTORS
+    obs = np.clip(obs, -1.0, 1.0)
+    return obs
 
 if __name__ == "__main__":
     main()

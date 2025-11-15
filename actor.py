@@ -6,7 +6,11 @@ import numpy as np
 import os
 import tempfile
 
+from observation import calculate_value
+
 # PyTorch Actor Model
+# input is the current state
+# output is the predicted reward for each action
 class ActorNet(nn.Module):
     def __init__(self, input_dim, num_actions, nodes, layers):
         super().__init__()
@@ -15,7 +19,13 @@ class ActorNet(nn.Module):
         self.nodes = nodes
         self.layers = layers
         
-        self.input = nn.Linear(self.input_dim, nodes)
+        self.input = nn.Sequential(
+            nn.Linear(self.input_dim, nodes),
+            nn.Linear(nodes, nodes),
+            nn.LeakyReLU(),
+            nn.Linear(nodes, nodes),
+            nn.LeakyReLU()
+        )
 
         self.skip_layers = nn.ModuleList([
             nn.Sequential(
@@ -33,6 +43,7 @@ class ActorNet(nn.Module):
             nn.LeakyReLU(),
             nn.Linear(nodes, num_actions),
             nn.Softmax(dim=-1)
+            # nn.Sigmoid()
         )
 
     def forward(self, x):
@@ -82,7 +93,7 @@ class ActorModel:
             predicted_rewards = self.critic_model.model(sensors_1_tiled, actions_onehot_tiled)
             predicted_rewards = predicted_rewards.view(len(observations), self.num_actions)
             predicted_actions = torch.argmax(predicted_rewards, dim=1)
-
+        
         best_actions = F.one_hot(predicted_actions, num_classes=self.num_actions).float()
 
         for _ in range(4):

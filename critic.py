@@ -10,6 +10,8 @@ from observation import calculate_value
 
 
 # PyTorch Critic Model
+# input is the current state plus the action one-hot encoded
+# output is the predicted reward for the action
 class CriticNet(nn.Module):
     def __init__(self, input_dim, num_actions, nodes, layers):
         super().__init__()
@@ -17,10 +19,14 @@ class CriticNet(nn.Module):
         self.num_actions = num_actions
         self.nodes = nodes
         self.layers = layers
-
-        self.input_nodes = input_dim + num_actions
-
-        self.input = nn.Linear(self.input_nodes, nodes)
+        
+        self.input = nn.Sequential(
+            nn.Linear(self.input_dim + self.num_actions, nodes),
+            nn.Linear(nodes, nodes),
+            nn.LeakyReLU(),
+            nn.Linear(nodes, nodes),
+            nn.LeakyReLU()
+        )
 
         self.skip_layers = nn.ModuleList([
             nn.Sequential(
