@@ -10,7 +10,7 @@ from collections import deque
 
 from observation import Observation, calculate_value
 from actor import ActorModel
-from ReplayBuffer import ReplayBuffer
+from replay_buffer import ReplayBuffer
 
 # Define the normalization factors for the observation space
 # These values are based on the observation space of the LunarLander-v2 environment
@@ -39,6 +39,7 @@ def train(env, actor_model: ActorModel, critic_model: CriticModel, episodes, tra
         obs, _ = env.reset()
         obs = normalize_observation(obs)
         obs = np.concatenate((obs, [1.0]))  # fuel level
+        video_path = f"{video_folder}/{env._video_name}.mp4"
 
         fuel = 1000
     
@@ -81,6 +82,14 @@ def train(env, actor_model: ActorModel, critic_model: CriticModel, episodes, tra
 
             done = done or truncated
 
+            # if any of the values are outside the -1.0 to 1.0 range, set done to True and run out the episode
+            out_of_bounds = np.any(next_obs[0:6] <= -1.0) or np.any(next_obs[0:6] >= 1.0)
+            # if both legs are down and both legs were down in the previous step, set done to True
+            legs_down = next_obs[6] == 1.0 and next_obs[7] == 1.0 and obs[6] == 1.0 and obs[7] == 1.0
+            if out_of_bounds or legs_down:
+                done = True
+                env.close()
+
             # add the fuel level to the observation
             next_obs = np.concatenate((next_obs, [fuel / 1000.0]))
 
@@ -108,28 +117,6 @@ def train(env, actor_model: ActorModel, critic_model: CriticModel, episodes, tra
             critic_predictions = critic_model.model(sensors_tiled_tensor, actions_onehot_tensor).cpu().detach().numpy().flatten()
             print(f"value: {value1:.4f}  critic: {critic_predictions}  actor: {prediction} next_obs: {next_obs[0:6]}")
 
-            # print the next world prediction from the world model
-            # actions_onehot = np.zeros((world_model.num_actions,), dtype=np.float32)
-            # actions_onehot[action] = 1.0
-
-            # action_onehot = torch.zeros((world_model.num_actions,), dtype=torch.float32, device=world_model.device)
-            # action_onehot[action] = 1.0
-            # action_onehot = action_onehot
-            # obs0 = torch.tensor(obs, dtype=torch.float32, device=world_model.device)
-            # world_prediction = world_model.model(obs0.reshape(1, -1), action_onehot.reshape(1, -1)).cpu().detach().numpy().flatten()
-            # world_prediction_delta = world_prediction - next_obs
-            # print("world prediction delta: [" + ", ".join(f"{x:+0.4f}" for x in world_prediction_delta) + "]")
-
-            # world_prediction_value = calculate_value(torch.tensor(world_prediction.reshape(1, -1), dtype=torch.float32, device=actor_model.device)).item()
-
-            # value_delta = world_prediction_value - value1
-            # print(f"world prediction value: {world_prediction_value:.4f} delta: {value_delta:+0.4f}")
-
-            # critic_prediction = critic_model.model(obs0.reshape(1, -1), action_onehot.reshape(1, -1)).cpu().detach().numpy().flatten()
-            # value_delta = critic_prediction[0] - value1
-            # print(f"world prediction value: {world_prediction_value:.4f}  critic prediction: {critic_prediction[0]:.4f} delta: {value_delta:+0.4f}")
-
-
             obs = next_obs
 
         #########
@@ -139,8 +126,6 @@ def train(env, actor_model: ActorModel, critic_model: CriticModel, episodes, tra
 
         # save video with final value in the filename
 
-        video_path = f"{video_folder}/{env._video_name}.mp4"
-        # env.reset()
         env.close()
         
         value1 = calculate_value(torch.tensor(next_obs.reshape(1, -1), dtype=torch.float32, device=actor_model.device)).item()
@@ -161,16 +146,14 @@ def train(env, actor_model: ActorModel, critic_model: CriticModel, episodes, tra
             sample_len = len(replay_buffer0) * 4
             # sample_len = 2 ** 14
             replay_buffer0 = list(replay_buffer0)
-            for k in range(96):
+            for k in range(64):
                 print(f"Training iteration {k} discount_factor={critic_model.discount_factor}...")
                 training_sample = replay_buffer.sample(sample_len) + replay_buffer0
                 critic_model.train(training_sample)
                 actor_model.train(training_sample)
-                # world_model.train(training_sample)
 
             critic_model.save()
             actor_model.save()
-            # world_model.save()
 
             replay_buffer0 = deque(maxlen=40000)
             # Autosave observations

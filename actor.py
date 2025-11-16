@@ -7,7 +7,6 @@ import os
 import tempfile
 
 from observation import calculate_value
-from residual_block import ResidualBlock
 
 # PyTorch Actor Model
 # input is the current state
@@ -25,7 +24,14 @@ class ActorNet(nn.Module):
             nn.LeakyReLU()
         )
 
-        self.res_blocks = nn.ModuleList([ResidualBlock(nodes) for _ in range(layers)])
+        self.skip_layers = nn.ModuleList([
+            nn.Sequential(
+                nn.Linear(nodes, nodes),
+                nn.LeakyReLU(),
+                nn.Linear(nodes, nodes),
+                nn.BatchNorm1d(nodes, momentum=0.01),
+            ) for _ in range(layers)
+        ])
 
         self.output = nn.Sequential(
             nn.LeakyReLU(),
@@ -35,11 +41,10 @@ class ActorNet(nn.Module):
 
     def forward(self, x):
         x = self.input(x)
-        for block in self.res_blocks:
-            x = block(x)
+        for skip_layer in self.skip_layers:
+            x = x + skip_layer(x)
         x = self.output(x)
         return x
-
 
 class ActorModel:
     def __init__(self, model_path="models/actor_model.pt"):
@@ -114,9 +119,9 @@ class ActorModel:
             prediction = self.model(sensors)[0]
 
         # greedy action selection
-        action = torch.argmax(prediction).item()
+        # action = torch.argmax(prediction).item()
 
         # stochastic action selection
-        # action = torch.multinomial(prediction, num_samples=1).item()
+        action = torch.multinomial(prediction, num_samples=1).item()
 
         return int(action), prediction.cpu().numpy()

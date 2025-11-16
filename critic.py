@@ -6,7 +6,6 @@ import numpy as np
 import os
 import tempfile
 
-from residual_block import ResidualBlock
 from observation import calculate_value
 
 # PyTorch Critic Model
@@ -25,18 +24,27 @@ class CriticNet(nn.Module):
             nn.LeakyReLU(),
         )
 
-        self.res_blocks = nn.ModuleList([ResidualBlock(nodes) for _ in range(layers)])
+        self.skip_layers = nn.ModuleList([
+            nn.Sequential(
+                nn.Linear(nodes, nodes),
+                nn.LeakyReLU(),
+                nn.Linear(nodes, nodes),
+                nn.BatchNorm1d(nodes, momentum=0.01),
+            ) for _ in range(layers)
+        ])
 
         self.output = nn.Sequential(
+            nn.LeakyReLU(),
             nn.Linear(nodes, 1),
-            nn.Sigmoid()
+            nn.Tanh()
         )
 
     def forward(self, state, action):
         x = torch.cat([state, action], dim=-1)
         x = self.input(x)
-        for block in self.res_blocks:
-            x = block(x)
+        for i in range(self.layers):
+            skip_layer = self.skip_layers[i]
+            x = x + skip_layer(x)
         x = self.output(x)
         return x
 

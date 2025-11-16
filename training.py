@@ -3,7 +3,7 @@ import numpy as np
 import argparse
 
 from actor import ActorModel
-from ReplayBuffer import ReplayBuffer
+from replay_buffer import ReplayBuffer
 
 def main():
     parser = argparse.ArgumentParser(description="Training for the LunarLander-v3 environment.")
@@ -33,7 +33,6 @@ def main():
 
     critic_model.save()
     actor_model.save()
-    # world_model.save()
 
 if __name__ == "__main__":
     main()
