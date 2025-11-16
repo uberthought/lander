@@ -10,6 +10,10 @@ def calculate_value(obs):
     sensors = torch.abs(sensors)
     sensors = torch.clamp(sensors, 0, 1)
     sensors = torch.cat([sensors, fuel], dim=1)
+
+    # increase the penalty for vertical speed
+    sensors[:, [4]] **= 2
+
     value = torch.prod(sensors, dim=1)
 
     return value
