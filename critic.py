@@ -29,7 +29,6 @@ class CriticNet(nn.Module):
                 nn.Linear(nodes, nodes),
                 nn.LeakyReLU(),
                 nn.Linear(nodes, nodes),
-                nn.BatchNorm1d(nodes, momentum=0.01),
             ) for _ in range(layers)
         ])
 
@@ -56,7 +55,7 @@ class CriticModel:
         self.num_actions = 4
         self.discount_factor = discount_factor
         self.nodes = self.input_dim * self.num_actions * 3
-        self.layers = 4
+        self.layers = 8
 
         self.device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
         
@@ -95,7 +94,7 @@ class CriticModel:
         actions_hot = F.one_hot(actions, num_classes=self.num_actions).float()
 
         # calculate the values for the next states
-        values_1 = calculate_value(states_1)
+        values_1 = calculate_value(states_1, dones)
         values_1 = values_1.view(-1, 1)
 
         # get the predicted actions for the next states
@@ -109,14 +108,16 @@ class CriticModel:
         q_next = q_next.view(-1, 1)
 
         # compute target values
-        immediate_reward = (1 - self.discount_factor) * values_1
-        future_reward = self.discount_factor * q_next
-        target_values = immediate_reward + future_reward
+        # immediate_reward = (1 - self.discount_factor) * values_1
+        # future_reward = self.discount_factor * q_next
+        # target_values = immediate_reward + future_reward
 
-        # For done indices, set target values to values_1
-        dones = dones.view(-1, 1)
-        done_indices = (dones == 1.0).nonzero(as_tuple=True)[0]
-        target_values[done_indices] = values_1[done_indices]
+        # # For done indices, set target values to values_1
+        # dones = dones.view(-1, 1)
+        # done_indices = (dones == 1.0).nonzero(as_tuple=True)[0]
+        # target_values[done_indices] = values_1[done_indices]
+
+        target_values = values_1
 
         # train the network
         self.optimizer.zero_grad()

@@ -6,8 +6,6 @@ import numpy as np
 import os
 import tempfile
 
-from observation import calculate_value
-
 # PyTorch Actor Model
 # input is the current state
 # output is the predicted reward for each action
@@ -29,7 +27,6 @@ class ActorNet(nn.Module):
                 nn.Linear(nodes, nodes),
                 nn.LeakyReLU(),
                 nn.Linear(nodes, nodes),
-                nn.BatchNorm1d(nodes, momentum=0.01),
             ) for _ in range(layers)
         ])
 
@@ -119,9 +116,9 @@ class ActorModel:
             prediction = self.model(sensors)[0]
 
         # greedy action selection
-        # action = torch.argmax(prediction).item()
+        action = torch.argmax(prediction).item()
 
         # stochastic action selection
-        action = torch.multinomial(prediction, num_samples=1).item()
+        # action = torch.multinomial(prediction, num_samples=1).item()
 
         return int(action), prediction.cpu().numpy()
