@@ -7,6 +7,7 @@ import os
 import tempfile
 
 from observation import calculate_value
+from residual_block import ResidualBlock
 
 # PyTorch Actor Model
 # input is the current state
@@ -24,14 +25,7 @@ class ActorNet(nn.Module):
             nn.LeakyReLU()
         )
 
-        self.skip_layers = nn.ModuleList([
-            nn.Sequential(
-                nn.Linear(nodes, nodes),
-                nn.LeakyReLU(),
-                nn.Linear(nodes, nodes),
-                nn.BatchNorm1d(nodes)
-            ) for _ in range(layers)
-        ])
+        self.res_blocks = nn.ModuleList([ResidualBlock(nodes) for _ in range(layers)])
 
         self.output = nn.Sequential(
             nn.LeakyReLU(),
@@ -41,8 +35,8 @@ class ActorNet(nn.Module):
 
     def forward(self, x):
         x = self.input(x)
-        for skip_layer in self.skip_layers:
-            x = x + skip_layer(x)
+        for block in self.res_blocks:
+            x = block(x)
         x = self.output(x)
         return x
 
@@ -50,10 +44,10 @@ class ActorNet(nn.Module):
 class ActorModel:
     def __init__(self, model_path="models/actor_model.pt"):
         self.model_path = model_path
-        self.input_dim = 9
+        self.input_dim = 7
         self.num_actions = 4
-        self.nodes = self.input_dim * self.num_actions * 4
-        self.layers = 8
+        self.nodes = self.input_dim * self.num_actions * 3
+        self.layers = 4
 
         self.device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
         self.model = self._load_model() or self._create_model()
@@ -78,6 +72,8 @@ class ActorModel:
         self.model.train()
         states_0 = torch.tensor(np.array([obs.state for obs in observations]), dtype=torch.float32, device=self.device)
         states_1 = torch.tensor(np.array([obs.next_state for obs in observations]), dtype=torch.float32, device=self.device)
+        states_0 = states_0[:, [0, 1, 2, 3, 4, 5, 8]]
+        states_1 = states_1[:, [0, 1, 2, 3, 4, 5, 8]]
 
         sensors_1_tiled = states_1.repeat_interleave(self.num_actions, dim=0)
         actions_onehot_tiled = torch.eye(self.num_actions, device=self.device).repeat(len(observations), 1)
@@ -85,13 +81,13 @@ class ActorModel:
         with torch.no_grad():
             predicted_rewards = self.critic_model.model(sensors_1_tiled, actions_onehot_tiled)
             predicted_rewards = predicted_rewards.view(len(observations), self.num_actions)
-            predicted_actions = torch.argmax(predicted_rewards, dim=1)
+            best_actions = torch.argmax(predicted_rewards, dim=1)
         
-        best_actions = F.one_hot(predicted_actions, num_classes=self.num_actions).float()
+        best_actions_one_hot = F.one_hot(best_actions, num_classes=self.num_actions).float()
 
         self.optimizer.zero_grad()
         outputs = self.model(states_0)
-        loss = self.criterion(outputs, best_actions)
+        loss = self.criterion(outputs, best_actions_one_hot)
         loss.backward()
         self.optimizer.step()
 
@@ -112,15 +108,15 @@ class ActorModel:
 
     def get_optimal_action(self, obs):
         self.model.eval()
+        obs = obs[[0, 1, 2, 3, 4, 5, 8]]
         sensors = torch.tensor([obs], dtype=torch.float32, device=self.device)
         with torch.no_grad():
-            prediction0 = self.model(sensors)[0]
-        prediction_np = prediction0.cpu().numpy()
+            prediction = self.model(sensors)[0]
 
         # greedy action selection
-        # action = np.argmax(prediction_np)
+        action = torch.argmax(prediction).item()
 
         # stochastic action selection
-        action = np.random.choice(self.num_actions, p=prediction_np)
+        # action = torch.multinomial(prediction, num_samples=1).item()
 
-        return int(action), prediction_np
+        return int(action), prediction.cpu().numpy()

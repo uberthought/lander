@@ -44,7 +44,7 @@ class ReplayBuffer:
             ('state', np.float32, self.state_shape),
             ('action', np.float32),
             ('next_state', np.float32, self.state_shape),
-            ('done', np.float32, 1)
+            ('done', np.float32)
         ])
         
         self.buffer = np.memmap(
@@ -61,7 +61,7 @@ class ReplayBuffer:
             ('state', np.float32, self.state_shape),
             ('action', np.float32),
             ('next_state', np.float32, self.state_shape),
-            ('done', np.float32, 1)
+            ('done', np.float32)
         ])
         
         self.buffer = np.memmap(

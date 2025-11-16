@@ -11,7 +11,6 @@ from collections import deque
 from observation import Observation, calculate_value
 from actor import ActorModel
 from ReplayBuffer import ReplayBuffer
-from world import WorldModel
 
 # Define the normalization factors for the observation space
 # These values are based on the observation space of the LunarLander-v2 environment
@@ -19,7 +18,7 @@ from world import WorldModel
 # x, y, v_x, v_y, angle, v_angle
 NORMALIZATION_FACTORS = np.array([1, 1.75, 4, 4, 3.1415927, 5, 1, 1], dtype=np.float32)
 
-def train(env, actor_model: ActorModel, critic_model: CriticModel, world_model: WorldModel, episodes, train_every_n_episodes, video_folder):
+def train(env, actor_model: ActorModel, critic_model: CriticModel, episodes, train_every_n_episodes, video_folder):
     # Main long-term buffer (persistent) and recent buffer for on-policy-ish updates
     # State shape is 8 from LunarLander-v3 plus fuel level
     replay_buffer = ReplayBuffer(state_shape=(9,))
@@ -99,9 +98,11 @@ def train(env, actor_model: ActorModel, critic_model: CriticModel, world_model: 
             # rocket = no_op_emoji if action == 0 else right_thruster_emoji if action == 1 else main_thruster_emoji if action == 2 else left_thruster_emoji
             # print(f"Episode: {episode+1}/{episodes}, Step: {t}, Value: {value1:.4f}, Rocket: {rocket}, Prediction: {prediction}")
 
+
             actions = np.arange(critic_model.num_actions)
             actions_onehot = np.eye(critic_model.num_actions)[actions]
-            sensors_tiled = np.tile(obs.reshape((1, -1)), (critic_model.num_actions, 1))
+            obs0 = obs[[0, 1, 2, 3, 4, 5, 8]]
+            sensors_tiled = np.tile(obs0.reshape((1, -1)), (critic_model.num_actions, 1))
             sensors_tiled_tensor = torch.tensor(sensors_tiled, dtype=torch.float32, device=critic_model.device)
             actions_onehot_tensor = torch.tensor(actions_onehot, dtype=torch.float32, device=critic_model.device)
             critic_predictions = critic_model.model(sensors_tiled_tensor, actions_onehot_tensor).cpu().detach().numpy().flatten()
@@ -139,7 +140,9 @@ def train(env, actor_model: ActorModel, critic_model: CriticModel, world_model: 
         # save video with final value in the filename
 
         video_path = f"{video_folder}/{env._video_name}.mp4"
-        env.reset()
+        # env.reset()
+        env.close()
+        
         value1 = calculate_value(torch.tensor(next_obs.reshape(1, -1), dtype=torch.float32, device=actor_model.device)).item()
         video_name_with_final_value = f"{video_folder}/episode_{episode+1}_value_{value1:.4f}_t_{t}.mp4"
         shutil.move(video_path, video_name_with_final_value)
@@ -155,19 +158,19 @@ def train(env, actor_model: ActorModel, critic_model: CriticModel, world_model: 
         # if it's time to train the model, do so
 
         if do_training:
-            sample_len = len(replay_buffer0) * 32
+            sample_len = len(replay_buffer0) * 4
             # sample_len = 2 ** 14
             replay_buffer0 = list(replay_buffer0)
-            for k in range(32):
+            for k in range(96):
                 print(f"Training iteration {k} discount_factor={critic_model.discount_factor}...")
                 training_sample = replay_buffer.sample(sample_len) + replay_buffer0
                 critic_model.train(training_sample)
                 actor_model.train(training_sample)
-                world_model.train(training_sample)
+                # world_model.train(training_sample)
 
             critic_model.save()
             actor_model.save()
-            world_model.save()
+            # world_model.save()
 
             replay_buffer0 = deque(maxlen=40000)
             # Autosave observations
@@ -193,11 +196,10 @@ def main():
     env = RecordVideo(env, video_folder="./videos", episode_trigger=lambda x: True, disable_logger=True)
     actor_model = ActorModel()
     critic_model = CriticModel(discount_factor=discount_factor)
-    world_model = WorldModel()
     actor_model.set_critic_model(critic_model)
     critic_model.set_actor_model(actor_model)
 
-    train(env, actor_model, critic_model, world_model, episodes, train_every, video_folder="./videos")
+    train(env, actor_model, critic_model, episodes, train_every, video_folder="./videos")
 
     env.close()
 

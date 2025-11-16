@@ -11,6 +11,10 @@ def calculate_value(obs):
     sensors = torch.clamp(sensors, 0, 1)
     sensors = 1.0 - sensors
     sensors = torch.cat([sensors, fuel], dim=1)
+
+    # accentuate individual values using exponents
+    sensors[:, [0, 1]] **= 3
+
     value = torch.prod(sensors, dim=1)
 
     return value

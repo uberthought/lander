@@ -6,8 +6,8 @@ import numpy as np
 import os
 import tempfile
 
+from residual_block import ResidualBlock
 from observation import calculate_value
-
 
 # PyTorch Critic Model
 # input is the current state plus the action one-hot encoded
@@ -25,16 +25,9 @@ class CriticNet(nn.Module):
             nn.LeakyReLU(),
         )
 
-        self.skip_layers = nn.ModuleList([
-            nn.Sequential(
-                nn.Linear(nodes, nodes),
-                nn.LeakyReLU(),
-                nn.Linear(nodes, nodes),
-            ) for _ in range(layers)
-        ])
+        self.res_blocks = nn.ModuleList([ResidualBlock(nodes) for _ in range(layers)])
 
         self.output = nn.Sequential(
-            nn.LeakyReLU(),
             nn.Linear(nodes, 1),
             nn.Sigmoid()
         )
@@ -42,9 +35,8 @@ class CriticNet(nn.Module):
     def forward(self, state, action):
         x = torch.cat([state, action], dim=-1)
         x = self.input(x)
-        for i in range(self.layers):
-            skip_layer = self.skip_layers[i]
-            x = x + skip_layer(x)
+        for block in self.res_blocks:
+            x = block(x)
         x = self.output(x)
         return x
 
@@ -52,11 +44,11 @@ class CriticNet(nn.Module):
 class CriticModel:
     def __init__(self, discount_factor=0.95, model_path="models/critic_model.pt"):
         self.model_path = model_path
-        self.input_dim = 9
+        self.input_dim = 7
         self.num_actions = 4
         self.discount_factor = discount_factor
-        self.nodes = self.input_dim * self.num_actions * 4
-        self.layers = 8
+        self.nodes = self.input_dim * self.num_actions * 3
+        self.layers = 4
 
         self.device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
         
@@ -88,6 +80,9 @@ class CriticModel:
 
         states_0 = torch.tensor(np.array([obs.state for obs in observations]), dtype=torch.float32, device=self.device)
         states_1 = torch.tensor(np.array([obs.next_state for obs in observations]), dtype=torch.float32, device=self.device)
+        states_0 = states_0[:, [0, 1, 2, 3, 4, 5, 8]]
+        states_1 = states_1[:, [0, 1, 2, 3, 4, 5, 8]]
+
 
         actions_hot = F.one_hot(actions, num_classes=self.num_actions).float()
 

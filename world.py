@@ -30,6 +30,7 @@ class WorldNet(nn.Module):
                 nn.Linear(nodes, nodes),
                 nn.LeakyReLU(),
                 nn.Linear(nodes, nodes),
+                nn.BatchNorm1d(nodes, momentum=0.01),
             ) for _ in range(layers)
         ])
 
@@ -52,7 +53,7 @@ class WorldNet(nn.Module):
 class WorldModel:
     def __init__(self, model_path="models/world_model.pt"):
         self.model_path = model_path
-        self.input_dim = 9
+        self.input_dim = 7
         self.num_actions = 4
         self.nodes = self.input_dim * self.num_actions * 4
         self.layers = 8
@@ -85,6 +86,8 @@ class WorldModel:
         actions = torch.tensor([int(obs.action) for obs in observations], dtype=torch.long, device=self.device)
         states_0 = torch.tensor(np.array([obs.state for obs in observations]), dtype=torch.float32, device=self.device)
         states_1 = torch.tensor(np.array([obs.next_state for obs in observations]), dtype=torch.float32, device=self.device)
+        states_0 = states_0[:, [0, 1, 2, 3, 4, 5, 8]]
+        states_1 = states_1[:, [0, 1, 2, 3, 4, 5, 8]]
 
         actions_hot = F.one_hot(actions, num_classes=self.num_actions).float()
 
