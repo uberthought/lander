@@ -43,7 +43,8 @@ class ReplayBuffer:
         dtype = np.dtype([
             ('state', np.float32, self.state_shape),
             ('action', np.float32),
-            ('next_state', np.float32, self.state_shape)
+            ('next_state', np.float32, self.state_shape),
+            ('done', np.float32, 1)
         ])
         
         self.buffer = np.memmap(
@@ -59,7 +60,8 @@ class ReplayBuffer:
         dtype = np.dtype([
             ('state', np.float32, self.state_shape),
             ('action', np.float32),
-            ('next_state', np.float32, self.state_shape)
+            ('next_state', np.float32, self.state_shape),
+            ('done', np.float32, 1)
         ])
         
         self.buffer = np.memmap(
@@ -113,13 +115,14 @@ class ReplayBuffer:
             state = observation.state
             action = observation.action
             next_state = observation.next_state
+            done = observation.done
         elif isinstance(observation, (tuple, list)):
-            state, action, next_state = observation[:3]
+            state, action, next_state, done = observation[:4]
         else:
             raise ValueError("Observation must be tuple/namedtuple with (state, action, next_state, done)")
 
         # Write to buffer
-        self.buffer[self.write_pos] = (state, action, next_state)
+        self.buffer[self.write_pos] = (state, action, next_state, done)
         
         # Update circular buffer pointers
         self.write_pos = (self.write_pos + 1) % self.maxlen
@@ -152,12 +155,13 @@ class ReplayBuffer:
             obs = self.buffer[i]
             # Create a simple object to mimic namedtuple behavior
             class Observation:
-                def __init__(self, state, action, next_state):
+                def __init__(self, state, action, next_state, done):
                     self.state = state
                     self.action = action
                     self.next_state = next_state
+                    self.done = done
 
-            samples.append(Observation(obs['state'], obs['action'], obs['next_state']))
+            samples.append(Observation(obs['state'], obs['action'], obs['next_state'], obs['done']))
 
         return samples
 
@@ -170,10 +174,11 @@ class ReplayBuffer:
         for i in valid_indices:
             obs = self.buffer[i]
             class Observation:
-                def __init__(self, state, action, next_state):
+                def __init__(self, state, action, next_state, done):
                     self.state = state
                     self.action = action
                     self.next_state = next_state
+                    self.done = done
 
             yield Observation(obs['state'], obs['action'], obs['next_state'], obs['done'])
 
@@ -199,6 +204,7 @@ class ReplayBuffer:
                 np.empty((0,) + self.state_shape, dtype=np.float32),
                 np.empty((0,), dtype=np.float32),
                 np.empty((0,) + self.state_shape, dtype=np.float32),
+                np.empty((0,), dtype=np.float32),
             )
         
         valid_indices = self._get_valid_indices()
@@ -207,8 +213,9 @@ class ReplayBuffer:
         states = valid_data['state']
         actions = valid_data['action']
         next_states = valid_data['next_state']
+        dones = valid_data['done']
 
-        return states, actions, next_states
+        return states, actions, next_states, dones
 
     def shrink(self, keep_last: int):
         """Keep only the most recent N observations (in-place)."""

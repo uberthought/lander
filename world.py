@@ -52,7 +52,7 @@ class WorldNet(nn.Module):
 class WorldModel:
     def __init__(self, model_path="models/world_model.pt"):
         self.model_path = model_path
-        self.input_dim = 10
+        self.input_dim = 9
         self.num_actions = 4
         self.nodes = self.input_dim * self.num_actions * 4
         self.layers = 8
@@ -89,12 +89,11 @@ class WorldModel:
         actions_hot = F.one_hot(actions, num_classes=self.num_actions).float()
 
         # train the network
-        for _ in range(4):
-            self.optimizer.zero_grad()
-            outputs = self.model(states_0, actions_hot)
-            loss = self.criterion(outputs, states_1)
-            loss.backward()
-            self.optimizer.step()
+        self.optimizer.zero_grad()
+        outputs = self.model(states_0, actions_hot)
+        loss = self.criterion(outputs, states_1)
+        loss.backward()
+        self.optimizer.step()
 
     def save(self):
         fd1, tmp_path = tempfile.mkstemp(prefix='.tmp_world_', suffix='.pt', dir=os.path.dirname(self.model_path) or '.')

@@ -52,7 +52,7 @@ class CriticNet(nn.Module):
 class CriticModel:
     def __init__(self, discount_factor=0.95, model_path="models/critic_model.pt"):
         self.model_path = model_path
-        self.input_dim = 10
+        self.input_dim = 9
         self.num_actions = 4
         self.discount_factor = discount_factor
         self.nodes = self.input_dim * self.num_actions * 4
@@ -84,7 +84,7 @@ class CriticModel:
         self.model.train()
 
         actions = torch.tensor([int(obs.action) for obs in observations], dtype=torch.long, device=self.device)
-        dones = torch.tensor([obs.next_state[-1] for obs in observations], dtype=torch.float32, device=self.device)
+        dones = torch.tensor([obs.done for obs in observations], dtype=torch.float32, device=self.device)
 
         states_0 = torch.tensor(np.array([obs.state for obs in observations]), dtype=torch.float32, device=self.device)
         states_1 = torch.tensor(np.array([obs.next_state for obs in observations]), dtype=torch.float32, device=self.device)
@@ -116,12 +116,11 @@ class CriticModel:
         target_values[done_indices] = values_1[done_indices]
 
         # train the network
-        for _ in range(4):
-            self.optimizer.zero_grad()
-            outputs = self.model(states_0, actions_hot)
-            loss = self.criterion(outputs, target_values)
-            loss.backward()
-            self.optimizer.step()
+        self.optimizer.zero_grad()
+        outputs = self.model(states_0, actions_hot)
+        loss = self.criterion(outputs, target_values)
+        loss.backward()
+        self.optimizer.step()
 
     def save(self):
         fd1, tmp_path = tempfile.mkstemp(prefix='.tmp_critic_', suffix='.pt', dir=os.path.dirname(self.model_path) or '.')

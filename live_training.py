@@ -21,8 +21,8 @@ NORMALIZATION_FACTORS = np.array([1, 1.75, 4, 4, 3.1415927, 5, 1, 1], dtype=np.f
 
 def train(env, actor_model: ActorModel, critic_model: CriticModel, world_model: WorldModel, episodes, train_every_n_episodes, video_folder):
     # Main long-term buffer (persistent) and recent buffer for on-policy-ish updates
-    # State shape is 9: 8 from LunarLander-v2 + 1 for done flag
-    replay_buffer = ReplayBuffer(state_shape=(10,))
+    # State shape is 8 from LunarLander-v3 plus fuel level
+    replay_buffer = ReplayBuffer(state_shape=(9,))
     replay_buffer0 = deque(maxlen=40000)
 
     # remove the videos folder
@@ -39,7 +39,7 @@ def train(env, actor_model: ActorModel, critic_model: CriticModel, world_model: 
 
         obs, _ = env.reset()
         obs = normalize_observation(obs)
-        obs = np.concatenate((obs, [1.0, 0.0]))  # fuel level and not done
+        obs = np.concatenate((obs, [1.0]))  # fuel level
 
         fuel = 1000
     
@@ -82,10 +82,10 @@ def train(env, actor_model: ActorModel, critic_model: CriticModel, world_model: 
 
             done = done or truncated
 
-            # add the fuel level and done to the observation
-            next_obs = np.concatenate((next_obs, [fuel / 1000.0, 1.0 if done else 0.0]))
+            # add the fuel level to the observation
+            next_obs = np.concatenate((next_obs, [fuel / 1000.0]))
 
-            transition = Observation(obs, action, next_obs)
+            transition = Observation(obs, action, next_obs, done)
 
             replay_buffer.add(transition)
             replay_buffer0.append(transition)
@@ -99,25 +99,25 @@ def train(env, actor_model: ActorModel, critic_model: CriticModel, world_model: 
             # rocket = no_op_emoji if action == 0 else right_thruster_emoji if action == 1 else main_thruster_emoji if action == 2 else left_thruster_emoji
             # print(f"Episode: {episode+1}/{episodes}, Step: {t}, Value: {value1:.4f}, Rocket: {rocket}, Prediction: {prediction}")
 
-            # actions = np.arange(critic_model.num_actions)
-            # actions_onehot = np.eye(critic_model.num_actions)[actions]
-            # sensors_tiled = np.tile(obs.reshape((1, -1)), (critic_model.num_actions, 1))
-            # sensors_tiled_tensor = torch.tensor(sensors_tiled, dtype=torch.float32, device=critic_model.device)
-            # actions_onehot_tensor = torch.tensor(actions_onehot, dtype=torch.float32, device=critic_model.device)
-            # critic_predictions = critic_model.model(sensors_tiled_tensor, actions_onehot_tensor).cpu().detach().numpy().flatten()
-            # print(f"value: {value1:.4f}  critic: {critic_predictions}  actor: {prediction} next_obs: {next_obs[0:6]}")
+            actions = np.arange(critic_model.num_actions)
+            actions_onehot = np.eye(critic_model.num_actions)[actions]
+            sensors_tiled = np.tile(obs.reshape((1, -1)), (critic_model.num_actions, 1))
+            sensors_tiled_tensor = torch.tensor(sensors_tiled, dtype=torch.float32, device=critic_model.device)
+            actions_onehot_tensor = torch.tensor(actions_onehot, dtype=torch.float32, device=critic_model.device)
+            critic_predictions = critic_model.model(sensors_tiled_tensor, actions_onehot_tensor).cpu().detach().numpy().flatten()
+            print(f"value: {value1:.4f}  critic: {critic_predictions}  actor: {prediction} next_obs: {next_obs[0:6]}")
 
             # print the next world prediction from the world model
             # actions_onehot = np.zeros((world_model.num_actions,), dtype=np.float32)
             # actions_onehot[action] = 1.0
 
-            action_onehot = torch.zeros((world_model.num_actions,), dtype=torch.float32, device=world_model.device)
-            action_onehot[action] = 1.0
-            action_onehot = action_onehot
-            obs0 = torch.tensor(obs, dtype=torch.float32, device=world_model.device)
-            world_prediction = world_model.model(obs0.reshape(1, -1), action_onehot.reshape(1, -1)).cpu().detach().numpy().flatten()
-            world_prediction_delta = world_prediction - next_obs
-            print("world prediction delta: [" + ", ".join(f"{x:+0.4f}" for x in world_prediction_delta) + "]")
+            # action_onehot = torch.zeros((world_model.num_actions,), dtype=torch.float32, device=world_model.device)
+            # action_onehot[action] = 1.0
+            # action_onehot = action_onehot
+            # obs0 = torch.tensor(obs, dtype=torch.float32, device=world_model.device)
+            # world_prediction = world_model.model(obs0.reshape(1, -1), action_onehot.reshape(1, -1)).cpu().detach().numpy().flatten()
+            # world_prediction_delta = world_prediction - next_obs
+            # print("world prediction delta: [" + ", ".join(f"{x:+0.4f}" for x in world_prediction_delta) + "]")
 
             # world_prediction_value = calculate_value(torch.tensor(world_prediction.reshape(1, -1), dtype=torch.float32, device=actor_model.device)).item()
 
