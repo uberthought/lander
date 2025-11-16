@@ -6,7 +6,7 @@ import numpy as np
 import os
 import tempfile
 
-from observation import calculate_value
+from observation import calculate_reward
 
 # PyTorch QLearning Model
 # input is the current state plus the action one-hot encoded
@@ -21,10 +21,9 @@ class QLearningNet(nn.Module):
         
         self.input = nn.Sequential(
             nn.Linear(self.input_dim + self.num_actions, nodes),
-            nn.Linear(nodes, nodes),
             nn.LeakyReLU(),
             nn.Linear(nodes, nodes),
-            nn.LeakyReLU()
+            nn.LeakyReLU(),
         )
 
         self.skip_layers = nn.ModuleList([
@@ -32,13 +31,13 @@ class QLearningNet(nn.Module):
                 nn.Linear(nodes, nodes),
                 nn.LeakyReLU(),
                 nn.Linear(nodes, nodes),
-                nn.LeakyReLU()
+                nn.LeakyReLU(),
+                nn.Linear(nodes, nodes),
+                nn.BatchNorm1d(nodes),
             ) for _ in range(layers)
         ])
 
         self.output = nn.Sequential(
-            nn.Linear(nodes, nodes),
-            nn.LeakyReLU(),
             nn.Linear(nodes, nodes),
             nn.LeakyReLU(),
             nn.Linear(nodes, 1)
@@ -60,7 +59,7 @@ class QLearningModel:
         self.q2_model_path = model_path.replace(".pt", "_q2.pt")
         self.input_dim = 10
         self.num_actions = 4
-        self.nodes = self.input_dim * self.num_actions * 2
+        self.nodes = self.input_dim * self.num_actions * 4
         self.q1_layers = 16
         self.q2_layers = 8
 
@@ -87,50 +86,57 @@ class QLearningModel:
         return None
 
 
-    def train(self, observations):
+    def train(self, new_observations, replay_buffer, iterations=24):
         self.q1_model.train()
         self.q2_model.train()
 
-        states_0 = torch.tensor(np.array([obs.state for obs in observations]), dtype=torch.float32, device=self.device)
-        states_1 = torch.tensor(np.array([obs.next_state for obs in observations]), dtype=torch.float32, device=self.device)
-        actions_0 = torch.tensor([int(obs.action) for obs in observations], dtype=torch.long, device=self.device)
-        dones_1 = torch.tensor([obs.next_state[-1] for obs in observations], dtype=torch.float32, device=self.device)
+        sample_len = 2 ** 13
 
-        actions_0_onehot = F.one_hot(actions_0, num_classes=self.num_actions).float()
+        print(f"Training for {iterations} iterations with {len(new_observations)} new observations and replay buffer size {len(replay_buffer)}")
 
-        states_1_tile = states_1.unsqueeze(1).repeat(1, self.num_actions, 1)
-        actions_1_onehot = F.one_hot(torch.arange(self.num_actions, device=self.device), num_classes=self.num_actions).unsqueeze(0).repeat(len(states_1), 1, 1)
-        inputs_1 = torch.cat([states_1_tile, actions_1_onehot], dim=-1).view(-1, self.input_dim + self.num_actions)
+        for i in range(iterations):
+            observations = replay_buffer.sample(sample_len) + new_observations
 
-        with torch.no_grad():
-            q1_values_2 = self.q1_model(inputs_1).view(-1, self.num_actions)
-            q2_values_2 = self.q2_model(inputs_1).view(-1, self.num_actions)
+            states_0 = torch.tensor(np.array([obs.state for obs in observations]), dtype=torch.float32, device=self.device)
+            states_1 = torch.tensor(np.array([obs.next_state for obs in observations]), dtype=torch.float32, device=self.device)
+            actions_0 = torch.tensor([int(obs.action) for obs in observations], dtype=torch.long, device=self.device)
+            dones_1 = torch.tensor([obs.next_state[-1] for obs in observations], dtype=torch.float32, device=self.device)
 
-        # Use minimum of the two Q-values (SAC approach)
-        p_values_2 = torch.min(q1_values_2, q2_values_2)
-        p_values_2 = torch.max(p_values_2, dim=1)[0].view(-1, 1)
+            actions_0_onehot = F.one_hot(actions_0, num_classes=self.num_actions).float()
 
-        values_1 = calculate_value(states_1).view(-1, 1)
-        future_values = self.discount_factor * p_values_2
-        values = values_1 + future_values
+            states_1_tile = states_1.unsqueeze(1).repeat(1, self.num_actions, 1)
+            actions_1_onehot = F.one_hot(torch.arange(self.num_actions, device=self.device), num_classes=self.num_actions).unsqueeze(0).repeat(len(states_1), 1, 1)
+            inputs_1 = torch.cat([states_1_tile, actions_1_onehot], dim=-1).view(-1, self.input_dim + self.num_actions)
 
-        done_indicies = (dones_1 == 1.0).nonzero(as_tuple=True)[0]
-        values[done_indicies] = values_1[done_indicies]
+            with torch.no_grad():
+                q1_values_2 = self.q1_model(inputs_1).view(-1, self.num_actions)
+                q2_values_2 = self.q2_model(inputs_1).view(-1, self.num_actions)
 
-        model_input = torch.cat([states_0, actions_0_onehot], dim=-1)
+            # Use minimum of the two Q-values (SAC approach)
+            min_q_values_2 = torch.min(q1_values_2, q2_values_2)
+            p_rewards_2 = torch.max(min_q_values_2, dim=1)[0].view(-1, 1)
 
-        for _ in range(4):
+            rewards_1 = calculate_reward(states_1).view(-1, 1)
+            future_rewards = self.discount_factor * p_rewards_2
+            rewards = rewards_1 + future_rewards
+
+            done_indicies = (dones_1 == 1.0).nonzero(as_tuple=True)[0]
+            rewards[done_indicies] = rewards_1[done_indicies]
+
+            # input is state + action one-hot encoded
+            model_input = torch.cat([states_0, actions_0_onehot], dim=-1)
+
             # Train Q1 network
             self.q1_optimizer.zero_grad()
             q1_outputs = self.q1_model(model_input)
-            q1_loss = self.criterion(q1_outputs, values)
+            q1_loss = self.criterion(q1_outputs, rewards)
             q1_loss.backward()
             self.q1_optimizer.step()
             
             # Train Q2 network
             self.q2_optimizer.zero_grad()
             q2_outputs = self.q2_model(model_input)
-            q2_loss = self.criterion(q2_outputs, values)
+            q2_loss = self.criterion(q2_outputs, rewards)
             q2_loss.backward()
             self.q2_optimizer.step()
 
@@ -163,11 +169,11 @@ class QLearningModel:
         action_values = self.get_all_actions(obs).view(-1)
 
         # greedy action selection
-        action = torch.argmax(action_values).item()
+        # action = torch.argmax(action_values).item()
 
         # stochastic action selection
-        # action_softmax = F.softmax(action_values, dim=0)
-        # action = torch.multinomial(action_softmax, num_samples=1).item()
+        action_softmax = F.softmax(action_values, dim=0)
+        action = torch.multinomial(action_softmax, num_samples=1).item()
 
         return int(action), action_values.cpu().numpy()
 

@@ -7,7 +7,7 @@ import shutil
 import argparse
 from collections import deque
 
-from observation import Observation, calculate_value
+from observation import Observation, calculate_reward
 from q_learning import QLearningModel
 from ReplayBuffer import ReplayBuffer
 
@@ -82,7 +82,7 @@ def train(env, qlearning_model: QLearningModel, episodes, train_every_n_episodes
             replay_buffer.add(transition)
             replay_buffer0.append(transition)
 
-            value1 = calculate_value(torch.tensor(next_obs.reshape(1, -1), dtype=torch.float32, device=qlearning_model.device)).item()
+            value1 = calculate_reward(torch.tensor(next_obs.reshape(1, -1), dtype=torch.float32, device=qlearning_model.device)).item()
 
             main_thruster_emoji = "▼"
             right_thruster_emoji = "▶"
@@ -105,7 +105,7 @@ def train(env, qlearning_model: QLearningModel, episodes, train_every_n_episodes
         video_path = f"{video_folder}/rl-video-episode-*.mp4"
         video_name = [f for f in os.listdir(video_folder) if f.startswith("rl-video-episode-") and f.endswith(".mp4")][0]
         video_path = os.path.join(video_folder, video_name)
-        value1 = calculate_value(torch.tensor(next_obs.reshape(1, -1), dtype=torch.float32, device=qlearning_model.device)).item()
+        value1 = calculate_reward(torch.tensor(next_obs.reshape(1, -1), dtype=torch.float32, device=qlearning_model.device)).item()
         video_name_with_final_value = f"{video_folder}/episode_{episode+1}_value_{value1:.4f}_t_{t}.mp4"
         shutil.move(video_path, video_name_with_final_value)
 
@@ -116,14 +116,8 @@ def train(env, qlearning_model: QLearningModel, episodes, train_every_n_episodes
         # if it's time to train the model, do so
 
         if do_training:
-            # sample_len = len(replay_buffer0) * 32
-            sample_len = 2 ** 13
-            replay_buffer0 = list(replay_buffer0)
-            iterations = 24
-            print(f"Training iterations {iterations} discount_factor={qlearning_model.discount_factor}...")
-            for k in range(iterations):
-                training_sample = replay_buffer.sample(sample_len) + replay_buffer0
-                qlearning_model.train(training_sample)
+            new_observations = list(replay_buffer0)
+            qlearning_model.train(new_observations, replay_buffer, iterations=24)
 
             qlearning_model.save()
 
