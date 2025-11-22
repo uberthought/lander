@@ -6,7 +6,7 @@ import numpy as np
 import os
 import tempfile
 
-from observation import calculate_value
+from observation import calculate_reward
 
 # PyTorch Actor Model
 # input is the current state plus the action one-hot encoded
@@ -84,23 +84,23 @@ class ActorModel:
         actor_inputs_1 = torch.cat([states_1_tile, actions_1_onehot], dim=-1).view(-1, self.input_dim + self.num_actions)
 
         with torch.no_grad():
-            p_values_2 = self.model(actor_inputs_1)
-        p_values_2 = torch.max(p_values_2.view(-1, self.num_actions), dim=1)[0].view(-1, 1)
+            q_rewards_2 = self.model(actor_inputs_1)
+        q_rewards_2 = torch.max(q_rewards_2.view(-1, self.num_actions), dim=1)[0].view(-1, 1)
 
 
-        values_1 = calculate_value(states_1).view(-1, 1)
-        current_values = (1 - self.discount_factor) * values_1
-        future_values = self.discount_factor * p_values_2
-        values = current_values + future_values
+        current_rewards = calculate_reward(states_1).view(-1, 1)
+        future_rewards = self.discount_factor * q_rewards_2
+        rewards = current_rewards + future_rewards
 
+        # Set rewards to current rewards for terminal states
         done_indicies = (dones_1 == 1.0).nonzero(as_tuple=True)[0]
-        values[done_indicies] = values_1[done_indicies]
+        rewards[done_indicies] = current_rewards[done_indicies]
 
         for _ in range(4):
             self.optimizer.zero_grad()
             model_input = torch.cat([states_0, actions_0_onehot], dim=-1)
             outputs = self.model(model_input)
-            loss = self.criterion(outputs, values)
+            loss = self.criterion(outputs, rewards)
             loss.backward()
             self.optimizer.step()
 
@@ -120,19 +120,19 @@ class ActorModel:
             raise
 
     def get_optimal_action(self, obs):
-        action_values = self.get_all_actions(obs)
+        action_rewards = self.get_all_actions(obs)
 
         # greedy action selection
-        action1 = torch.argmax(action_values).item()
+        action1 = torch.argmax(action_rewards).item()
 
         # stochastic action selection
-        action_softmax = F.softmax(action_values.view(-1), dim=0)
+        action_softmax = F.softmax(action_rewards.view(-1), dim=0)
         action2 = torch.multinomial(action_softmax, num_samples=1).item()
 
         # 5% chance to explore
         action = action2 if np.random.rand() < 0.05 else action1
         
-        return int(action), action_values.view(-1).cpu().numpy()
+        return int(action), action_rewards.view(-1).cpu().numpy()
 
     def get_all_actions(self, obs):
         self.model.eval()
@@ -143,6 +143,6 @@ class ActorModel:
         actions_tile = actions_onehot.unsqueeze(0).repeat(len(sensors), 1, 1)
         actor_inputs = torch.cat([sensors_tile, actions_tile], dim=-1).view(-1, self.input_dim + self.num_actions)
         with torch.no_grad():
-            action_values = self.model(actor_inputs)
+            action_rewards = self.model(actor_inputs)
 
-        return action_values
+        return action_rewards

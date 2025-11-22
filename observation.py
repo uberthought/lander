@@ -3,7 +3,7 @@ from collections import namedtuple
 
 import torch
 
-def calculate_value(obs):
+def calculate_reward(obs):
     sensors = obs[:, :6]
     fuel = obs[:, 8:9]
 
