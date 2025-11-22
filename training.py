@@ -16,7 +16,7 @@ def main():
     np.set_printoptions(formatter={'float': lambda x: "{0:+0.4f}".format(x)})
 
     replay_buffer = ReplayBuffer(state_shape=(10,))
-    actor_model = QNetwork(discount_factor=discount_factor)
+    q_network = QNetwork(discount_factor=discount_factor)
 
     size = min(replay_buffer.size, 2 ** sample_size)
     if size > 0:
@@ -24,9 +24,9 @@ def main():
             print(f"Training iteration {i} discount_factor={discount_factor}...")
             training_sample = replay_buffer.sample(size)
             # training_sample = replay_buffer
-            actor_model.train(training_sample)
+            q_network.train(training_sample)
 
-    actor_model.save()
+    q_network.save()
 
 if __name__ == "__main__":
     main()

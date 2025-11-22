@@ -9,6 +9,7 @@ def calculate_reward(obs):
 
     sensors = torch.abs(sensors)
     sensors = torch.clamp(sensors, 0, 1)
+    sensors = 1.0 - sensors
     sensors = torch.cat([sensors, fuel], dim=1)
     value = torch.prod(sensors, dim=1)
 

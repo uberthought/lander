@@ -8,7 +8,7 @@ import tempfile
 
 from observation import calculate_reward
 
-# PyTorch Actor Model
+# PyTorch Q-Network Model
 # input is the current state plus the action one-hot encoded
 # output is the predicted reward for the action
 class QNet(nn.Module):
@@ -32,7 +32,7 @@ class QNet(nn.Module):
 
         self.output = nn.Sequential(
             nn.Linear(nodes, 1),
-            nn.Sigmoid()
+            nn.LeakyReLU()
         )
 
     def forward(self, x):
@@ -44,7 +44,7 @@ class QNet(nn.Module):
 
 
 class QNetwork:
-    def __init__(self, discount_factor=0.95, model_path="models/actor_model.pt"):
+    def __init__(self, discount_factor=0.95, model_path="networks/q_network.pt"):
         self.discount_factor = discount_factor
         self.model_path = model_path
         self.input_dim = 10
@@ -81,10 +81,10 @@ class QNetwork:
 
         states_1_tile = states_1.unsqueeze(1).repeat(1, self.num_actions, 1)
         actions_1_onehot = F.one_hot(torch.arange(self.num_actions, device=self.device), num_classes=self.num_actions).unsqueeze(0).repeat(len(states_1), 1, 1)
-        actor_inputs_1 = torch.cat([states_1_tile, actions_1_onehot], dim=-1).view(-1, self.input_dim + self.num_actions)
+        inputs_1 = torch.cat([states_1_tile, actions_1_onehot], dim=-1).view(-1, self.input_dim + self.num_actions)
 
         with torch.no_grad():
-            q_rewards_2 = self.model(actor_inputs_1)
+            q_rewards_2 = self.model(inputs_1)
         q_rewards_2 = torch.max(q_rewards_2.view(-1, self.num_actions), dim=1)[0].view(-1, 1)
 
 
@@ -105,7 +105,7 @@ class QNetwork:
             self.optimizer.step()
 
     def save(self):
-        fd, tmp_path = tempfile.mkstemp(prefix='.tmp_actor_', suffix='.pt', dir=os.path.dirname(self.model_path) or '.')
+        fd, tmp_path = tempfile.mkstemp(prefix='.tmp_q_network_', suffix='.pt', dir=os.path.dirname(self.model_path) or '.')
         os.close(fd)
         try:
             torch.save(self.model.state_dict(), tmp_path)
@@ -140,8 +140,8 @@ class QNetwork:
         actions_tile = actions_onehot.unsqueeze(0).repeat(len(sensors), 1, 1)
         sensors_tile = sensors.repeat(self.num_actions, 1)
         actions_tile = F.one_hot(torch.arange(0, self.num_actions, device=self.device), num_classes=self.num_actions).float()
-        actor_inputs = torch.cat([sensors_tile, actions_tile], dim=-1).view(-1, self.input_dim + self.num_actions)
+        inputs = torch.cat([sensors_tile, actions_tile], dim=-1).view(-1, self.input_dim + self.num_actions)
         with torch.no_grad():
-            action_rewards = self.model(actor_inputs)
+            action_rewards = self.model(inputs)
 
         return action_rewards

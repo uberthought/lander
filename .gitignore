@@ -130,6 +130,6 @@ mypy.ini
 replay_buffer.dat
 replay_buffer.dat.meta.npz
 
-models/
+networks/
 videos/
 .DS_Store

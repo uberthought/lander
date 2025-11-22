@@ -17,7 +17,7 @@ from ReplayBuffer import ReplayBuffer
 # x, y, v_x, v_y, angle, v_angle
 NORMALIZATION_FACTORS = np.array([1, 1.75, 4, 4, 3.1415927, 5, 1, 1], dtype=np.float32)
 
-def train(env, actor_model: QNetwork, episodes, train_every_n_episodes, video_folder):
+def train(env, q_network: QNetwork, episodes, train_every_n_episodes, video_folder):
     # Main long-term buffer (persistent) and recent buffer for on-policy-ish updates
     # State shape is 9: 8 from LunarLander-v3 + 1 for done flag
     replay_buffer = ReplayBuffer(state_shape=(10,))
@@ -52,7 +52,7 @@ def train(env, actor_model: QNetwork, episodes, train_every_n_episodes, video_fo
 
         while not done and not truncated:
             t += 1
-            action, prediction = actor_model.get_optimal_action(obs)
+            action, prediction = q_network.get_optimal_action(obs)
 
             next_obs, _, done, truncated, _ = env.step(action)
 
@@ -74,6 +74,12 @@ def train(env, actor_model: QNetwork, episodes, train_every_n_episodes, video_fo
 
             done = done or truncated
 
+            # if out of bounds or both legs are down, set done to True
+            out_of_bounds = np.any(np.abs(next_obs[:6]) >= 1.0)
+            legs_down = next_obs[6] == 1.0 and next_obs[7] == 1.0 and obs[6] == 1.0 and obs[7] == 1.0
+            if out_of_bounds or legs_down:
+                done = True
+
             # add the fuel level and done to the observation
             next_obs = np.concatenate((next_obs, [fuel / 1000.0, 1.0 if done else 0.0]))
 
@@ -82,7 +88,7 @@ def train(env, actor_model: QNetwork, episodes, train_every_n_episodes, video_fo
             replay_buffer.add(transition)
             replay_buffer0.append(transition)
 
-            value1 = calculate_reward(torch.tensor(next_obs.reshape(1, -1), dtype=torch.float32, device=actor_model.device)).item()
+            value1 = calculate_reward(torch.tensor(next_obs.reshape(1, -1), dtype=torch.float32, device=q_network.device)).item()
 
             main_thruster_emoji = "▼"
             right_thruster_emoji = "▶"
@@ -91,10 +97,10 @@ def train(env, actor_model: QNetwork, episodes, train_every_n_episodes, video_fo
             rocket = no_op_emoji if action == 0 else right_thruster_emoji if action == 1 else main_thruster_emoji if action == 2 else left_thruster_emoji
             print(f"Episode: {episode+1}/{episodes}, Step: {t}, Value: {value1:.4f}, Rocket: {rocket}, Prediction: {prediction}")
 
-            # actor_prediction = actor_model.get_all_actions(next_obs).cpu().numpy().flatten()
-            # action_value = actor_prediction[action]
+            # q_prediction = q_network.get_all_actions(next_obs).cpu().numpy().flatten()
+            # action_value = q_prediction[action]
             # diff = value1 - action_value
-            # print(f"value: {value1:.4f}  actor: {actor_prediction} diff: {diff:.4f}")
+            # print(f"value: {value1:.4f}  q: {q_prediction} diff: {diff:.4f}")
 
             obs = next_obs
 
@@ -110,7 +116,7 @@ def train(env, actor_model: QNetwork, episodes, train_every_n_episodes, video_fo
         video_path = f"{video_folder}/rl-video-episode-*.mp4"
         video_name = [f for f in os.listdir(video_folder) if f.startswith("rl-video-episode-") and f.endswith(".mp4")][0]
         video_path = os.path.join(video_folder, video_name)
-        value1 = calculate_reward(torch.tensor(next_obs.reshape(1, -1), dtype=torch.float32, device=actor_model.device)).item()
+        value1 = calculate_reward(torch.tensor(next_obs.reshape(1, -1), dtype=torch.float32, device=q_network.device)).item()
         video_name_with_final_value = f"{video_folder}/episode_{episode+1}_value_{value1:.4f}_t_{t}.mp4"
         shutil.move(video_path, video_name_with_final_value)
 
@@ -125,11 +131,11 @@ def train(env, actor_model: QNetwork, episodes, train_every_n_episodes, video_fo
             sample_len = 2 ** 14
             replay_buffer0 = list(replay_buffer0)
             for k in range(32):
-                print(f"Training iteration {k} discount_factor={actor_model.discount_factor}...")
+                print(f"Training iteration {k} discount_factor={q_network.discount_factor}...")
                 training_sample = replay_buffer.sample(sample_len) + replay_buffer0
-                actor_model.train(training_sample)
+                q_network.train(training_sample)
 
-            actor_model.save()
+            q_network.save()
 
             replay_buffer0 = deque(maxlen=40000)
             # Autosave observations
@@ -152,9 +158,9 @@ def main():
 
     env = gym.make("LunarLander-v3", render_mode="rgb_array")
     env = RecordVideo(env, video_folder="./videos", episode_trigger=lambda x: True, disable_logger=True)
-    actor_model = QNetwork(discount_factor=discount_factor)
+    q_network = QNetwork(discount_factor=discount_factor)
 
-    train(env, actor_model, episodes, train_every, video_folder="./videos")
+    train(env, q_network, episodes, train_every, video_folder="./videos")
 
     env.close()
 
@@ -162,7 +168,6 @@ def normalize_observation(obs):
     obs = np.array(obs, dtype=np.float32)
     obs = obs / NORMALIZATION_FACTORS
     obs = np.clip(obs, -1.0, 1.0)
-    obs = np.sign(obs) * (1.0 - np.abs(obs))
     return obs
 
 if __name__ == "__main__":
