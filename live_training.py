@@ -8,7 +8,7 @@ import argparse
 from collections import deque
 
 from observation import Observation, calculate_reward
-from actor import ActorModel
+from actor import QNetwork
 from ReplayBuffer import ReplayBuffer
 
 # Define the normalization factors for the observation space
@@ -17,7 +17,7 @@ from ReplayBuffer import ReplayBuffer
 # x, y, v_x, v_y, angle, v_angle
 NORMALIZATION_FACTORS = np.array([1, 1.75, 4, 4, 3.1415927, 5, 1, 1], dtype=np.float32)
 
-def train(env, actor_model: ActorModel, episodes, train_every_n_episodes, video_folder):
+def train(env, actor_model: QNetwork, episodes, train_every_n_episodes, video_folder):
     # Main long-term buffer (persistent) and recent buffer for on-policy-ish updates
     # State shape is 9: 8 from LunarLander-v3 + 1 for done flag
     replay_buffer = ReplayBuffer(state_shape=(10,))
@@ -152,7 +152,7 @@ def main():
 
     env = gym.make("LunarLander-v3", render_mode="rgb_array")
     env = RecordVideo(env, video_folder="./videos", episode_trigger=lambda x: True, disable_logger=True)
-    actor_model = ActorModel(discount_factor=discount_factor)
+    actor_model = QNetwork(discount_factor=discount_factor)
 
     train(env, actor_model, episodes, train_every, video_folder="./videos")
 

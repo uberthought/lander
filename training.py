@@ -1,7 +1,7 @@
 import numpy as np
 import argparse
 
-from actor import ActorModel
+from actor import QNetwork
 from ReplayBuffer import ReplayBuffer
 
 def main():
@@ -16,7 +16,7 @@ def main():
     np.set_printoptions(formatter={'float': lambda x: "{0:+0.4f}".format(x)})
 
     replay_buffer = ReplayBuffer(state_shape=(10,))
-    actor_model = ActorModel(discount_factor=discount_factor)
+    actor_model = QNetwork(discount_factor=discount_factor)
 
     size = min(replay_buffer.size, 2 ** sample_size)
     if size > 0:

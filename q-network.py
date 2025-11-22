@@ -11,7 +11,7 @@ from observation import calculate_reward
 # PyTorch Actor Model
 # input is the current state plus the action one-hot encoded
 # output is the predicted reward for the action
-class ActorNet(nn.Module):
+class QNet(nn.Module):
     def __init__(self, input_dim, num_actions, nodes, layers):
         super().__init__()
         self.input_dim = input_dim
@@ -43,7 +43,7 @@ class ActorNet(nn.Module):
         return x
 
 
-class ActorModel:
+class QNetwork:
     def __init__(self, discount_factor=0.95, model_path="models/actor_model.pt"):
         self.discount_factor = discount_factor
         self.model_path = model_path
@@ -59,11 +59,11 @@ class ActorModel:
         self.criterion = nn.MSELoss()
 
     def _create_model(self):
-        return ActorNet(self.input_dim, self.num_actions, self.nodes, self.layers)
+        return QNet(self.input_dim, self.num_actions, self.nodes, self.layers)
 
     def _load_model(self):
         if os.path.exists(self.model_path):
-            model = ActorNet(self.input_dim, self.num_actions, self.nodes, self.layers)
+            model = QNet(self.input_dim, self.num_actions, self.nodes, self.layers)
             model.load_state_dict(torch.load(self.model_path, map_location="cpu"))
             return model
         return None
@@ -123,15 +123,12 @@ class ActorModel:
         action_rewards = self.get_all_actions(obs)
 
         # greedy action selection
-        action1 = torch.argmax(action_rewards).item()
+        action = torch.argmax(action_rewards).item()
 
         # stochastic action selection
-        action_softmax = F.softmax(action_rewards.view(-1), dim=0)
-        action2 = torch.multinomial(action_softmax, num_samples=1).item()
+        # action_softmax = F.softmax(action_rewards.view(-1), dim=0)
+        # action = torch.multinomial(action_softmax, num_samples=1).item()
 
-        # 5% chance to explore
-        action = action2 if np.random.rand() < 0.05 else action1
-        
         return int(action), action_rewards.view(-1).cpu().numpy()
 
     def get_all_actions(self, obs):
@@ -141,6 +138,8 @@ class ActorModel:
         actions_arange = torch.arange(self.num_actions, device=self.device)
         actions_onehot = F.one_hot(actions_arange, num_classes=self.num_actions)
         actions_tile = actions_onehot.unsqueeze(0).repeat(len(sensors), 1, 1)
+        sensors_tile = sensors.repeat(self.num_actions, 1)
+        actions_tile = F.one_hot(torch.arange(0, self.num_actions, device=self.device), num_classes=self.num_actions).float()
         actor_inputs = torch.cat([sensors_tile, actions_tile], dim=-1).view(-1, self.input_dim + self.num_actions)
         with torch.no_grad():
             action_rewards = self.model(actor_inputs)
