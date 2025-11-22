@@ -19,18 +19,22 @@ class QNet(nn.Module):
         self.nodes = nodes
         self.layers = layers
         
-        self.input = nn.Linear(self.input_dim + self.num_actions, nodes)
+        self.input = nn.Sequential(
+            nn.Linear(self.input_dim + self.num_actions, nodes),
+            nn.LeakyReLU(),
+        )
 
         self.skip_layers = nn.ModuleList([
             nn.Sequential(
                 nn.Linear(nodes, nodes),
                 nn.LeakyReLU(),
                 nn.Linear(nodes, nodes),
-                nn.LeakyReLU()
             ) for _ in range(layers)
         ])
 
         self.output = nn.Sequential(
+            nn.Linear(nodes, nodes),
+            nn.LeakyReLU(),
             nn.Linear(nodes, 1),
             nn.LeakyReLU()
         )
@@ -49,8 +53,8 @@ class QNetwork:
         self.model_path = model_path
         self.input_dim = 10
         self.num_actions = 4
-        self.nodes = self.input_dim * self.num_actions * 4
-        self.layers = 8
+        self.nodes = self.input_dim * self.num_actions * 3
+        self.layers = 4
 
         self.device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
         self.model = self._load_model() or self._create_model()
@@ -74,35 +78,36 @@ class QNetwork:
 
         states_0 = torch.tensor(np.array([obs.state for obs in observations]), dtype=torch.float32, device=self.device)
         states_1 = torch.tensor(np.array([obs.next_state for obs in observations]), dtype=torch.float32, device=self.device)
-        actions_0 = torch.tensor([int(obs.action) for obs in observations], dtype=torch.long, device=self.device)
-        dones_1 = torch.tensor([obs.next_state[-1] for obs in observations], dtype=torch.float32, device=self.device)
+        actions = torch.tensor([int(obs.action) for obs in observations], dtype=torch.long, device=self.device)
+        dones = torch.tensor([obs.next_state[-1] for obs in observations], dtype=torch.float32, device=self.device)
 
-        actions_0_onehot = F.one_hot(actions_0, num_classes=self.num_actions).float()
+        actions_onehot = F.one_hot(actions, num_classes=self.num_actions).float()
 
         states_1_tile = states_1.unsqueeze(1).repeat(1, self.num_actions, 1)
         actions_1_onehot = F.one_hot(torch.arange(self.num_actions, device=self.device), num_classes=self.num_actions).unsqueeze(0).repeat(len(states_1), 1, 1)
         inputs_1 = torch.cat([states_1_tile, actions_1_onehot], dim=-1).view(-1, self.input_dim + self.num_actions)
 
+        # compute future rewards
         with torch.no_grad():
-            q_rewards_2 = self.model(inputs_1)
-        q_rewards_2 = torch.max(q_rewards_2.view(-1, self.num_actions), dim=1)[0].view(-1, 1)
+            q_rewards = self.model(inputs_1)
+        future_rewards = torch.max(q_rewards.view(-1, self.num_actions), dim=1)[0].view(-1, 1)
+        not_done_1 = 1.0 - dones.view(-1, 1)
+        future_rewards = future_rewards * not_done_1
+        future_rewards = self.discount_factor * future_rewards
 
-
+        # compute current rewards
         current_rewards = calculate_reward(states_1).view(-1, 1)
-        future_rewards = self.discount_factor * q_rewards_2
+
+        # set the rewards target
         rewards = current_rewards + future_rewards
 
-        # Set rewards to current rewards for terminal states
-        done_indicies = (dones_1 == 1.0).nonzero(as_tuple=True)[0]
-        rewards[done_indicies] = current_rewards[done_indicies]
-
-        for _ in range(4):
-            self.optimizer.zero_grad()
-            model_input = torch.cat([states_0, actions_0_onehot], dim=-1)
-            outputs = self.model(model_input)
-            loss = self.criterion(outputs, rewards)
-            loss.backward()
-            self.optimizer.step()
+        # optimize the model
+        self.optimizer.zero_grad()
+        inputs_0 = torch.cat([states_0, actions_onehot], dim=-1)
+        outputs = self.model(inputs_0)
+        loss = self.criterion(outputs, rewards)
+        loss.backward()
+        self.optimizer.step()
 
     def save(self):
         fd, tmp_path = tempfile.mkstemp(prefix='.tmp_q_network_', suffix='.pt', dir=os.path.dirname(self.model_path) or '.')

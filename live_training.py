@@ -59,25 +59,14 @@ def train(env, q_network: QNetwork, episodes, train_every_n_episodes, video_fold
             # normalize the next observation
             next_obs = normalize_observation(next_obs)
 
-            # if done, use the previous observation and add the legs and fuel level
-            if done or truncated:
-                next_obs[0] = obs[0]
-                next_obs[1] = obs[1]
-                next_obs[2] = obs[2]
-                next_obs[3] = obs[3]
-                next_obs[4] = obs[4]
-                next_obs[5] = obs[5]
-
             # if the action is not to do nothing, decrease fuel
             if action != 0:
                 fuel -= 1
 
             done = done or truncated
 
-            # if out of bounds or both legs are down, set done to True
-            out_of_bounds = np.any(np.abs(next_obs[:6]) >= 1.0)
-            legs_down = next_obs[6] == 1.0 and next_obs[7] == 1.0 and obs[6] == 1.0 and obs[7] == 1.0
-            if out_of_bounds or legs_down:
+            # if out of bounds, set done to True
+            if np.any(np.abs(next_obs[:6]) >= 0.99):
                 done = True
 
             # add the fuel level and done to the observation
