@@ -1,7 +1,7 @@
 import numpy as np
 import argparse
 
-from actor import QNetwork
+from q_network import QNetwork
 from ReplayBuffer import ReplayBuffer
 
 def main():

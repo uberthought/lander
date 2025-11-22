@@ -8,7 +8,7 @@ import argparse
 from collections import deque
 
 from observation import Observation, calculate_reward
-from actor import QNetwork
+from q_network import QNetwork
 from ReplayBuffer import ReplayBuffer
 
 # Define the normalization factors for the observation space
