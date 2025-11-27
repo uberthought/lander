@@ -8,6 +8,21 @@ import tempfile
 
 from observation import calculate_value
 
+class SkipBlock(nn.Module):
+    def __init__(self, nodes):
+        super().__init__()
+        self.block1 = nn.Linear(nodes, nodes)
+        self.relu1 = nn.LeakyReLU()
+        self.block2 = nn.Linear(nodes, nodes)
+        self.relu2 = nn.LeakyReLU()
+    def forward(self, x):
+        s = x
+        x = self.block1(x)
+        x = self.relu1(x)
+        x = self.block2(x)
+        x = x + s
+        x = self.relu2(x)
+        return x
 
 # PyTorch World Model
 # input is the current state plus the action one-hot encoded
@@ -21,33 +36,14 @@ class WorldNet(nn.Module):
         self.layers = layers
         
         self.input = nn.Linear(self.input_dim + self.num_actions, nodes)
-
-        self.skip_layers = nn.ModuleList([
-            nn.Sequential(
-                nn.Linear(nodes, nodes),
-                nn.LeakyReLU(),
-                nn.Linear(nodes, nodes),
-            ) for _ in range(layers)
-        ])
-        self.attn_weights = nn.ModuleList([
-            nn.Sequential(
-                nn.Linear(nodes, 1),
-                nn.Sigmoid()
-            ) for _ in range(layers)
-        ])
-
-        self.output = nn.Sequential(
-            nn.Linear(nodes, self.input_dim),
-            nn.Tanh()
-        )
+        self.skip_layers = nn.ModuleList([SkipBlock(nodes) for _ in range(layers)])
+        self.output = nn.Linear(nodes, self.input_dim)
 
     def forward(self, state, action):
         x = torch.cat([state, action], dim=-1)
         x = self.input(x)
         for i in range(self.layers):
-            skip_layer = self.skip_layers[i]
-            attn = self.attn_weights[i]
-            x = x + attn(x) * skip_layer(x)
+            x = self.skip_layers[i](x)
         x = self.output(x)
         return x
 
@@ -55,38 +51,27 @@ class WorldNet(nn.Module):
 class WorldModel:
     def __init__(self, model_path="models/world_model.pt"):
         self.model_path = model_path
-        self.input_dim = 10
+        self.input_dim = 9
         self.num_actions = 4
         self.nodes = (self.input_dim + self.num_actions) * 8
-        self.layers = 12
+        self.layers = 24
 
         self.device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
         
-        self.model = self._load_model() or self._create_model()
+        self.model = WorldNet(self.input_dim, self.num_actions, self.nodes, self.layers)
+        if os.path.exists(self.model_path):
+            self.model.load_state_dict(torch.load(self.model_path, map_location="cpu"))
         
         self.model.to(self.device)
         
-        self.optimizer = optim.AdamW(self.model.parameters(), lr=3e-4, weight_decay=1e-5)
+        self.optimizer = optim.AdamW(self.model.parameters())
         self.criterion = nn.MSELoss()
         
-    def set_actor_model(self, actor_model):
-        self.actor_model = actor_model
-    
-    def _create_model(self):
-        return WorldNet(self.input_dim, self.num_actions, self.nodes, self.layers)
-
-    def _load_model(self):
-        if os.path.exists(self.model_path):
-            model = WorldNet(self.input_dim, self.num_actions, self.nodes, self.layers)
-            model.load_state_dict(torch.load(self.model_path, map_location="cpu"))
-            return model
-        return None
-
     def train(self, observations):
         self.model.train()
 
         actions = torch.tensor([int(obs.action) for obs in observations], dtype=torch.long, device=self.device)
-        states_0 = torch.tensor(np.array([obs.state for obs in observations]), dtype=torch.float32, device=self.device)
+        states_0 = torch.tensor(np.array([obs.prev_state for obs in observations]), dtype=torch.float32, device=self.device)
         states_1 = torch.tensor(np.array([obs.next_state for obs in observations]), dtype=torch.float32, device=self.device)
 
         delta = states_1 - states_0
@@ -129,5 +114,4 @@ class WorldModel:
             action_hot = torch.zeros((1, self.num_actions), dtype=torch.float32, device=self.device)
             action_hot[0, action] = 1.0
             delta = self.model(state_tensor, action_hot).cpu().numpy().flatten()
-            next_state = state + delta
-        return next_state
+        return delta

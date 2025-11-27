@@ -1,6 +1,5 @@
 import numpy as np
 from collections import namedtuple
-
 import torch
 
 def calculate_value(obs):
@@ -14,13 +13,29 @@ def calculate_value(obs):
     value = torch.prod(sensors, dim=1)
 
     return value
-    
+
+def normalize_state(state):
+    # Define the normalization factors for the observation space
+    # These values are based on the observation space of the LunarLander-v2 environment
+    # and are used to scale the observations to a range of approximately [-1, 1]
+    # x, y, v_x, v_y, angle, v_angle
+    NORMALIZATION_FACTORS = np.array([1, 1.75, 4, 4, 3.1415927, 5, 1, 1], dtype=np.float32)
+    state = np.array(state, dtype=np.float32)
+    state = state / NORMALIZATION_FACTORS
+    state = np.clip(state, -1.0, 1.0)
+    return state
+
+def create_observation(episode, time, prev_transition, action, next_state, done):
+    prev_state = prev_transition.next_state
+    done = float(done)
+    return Observation(episode, time, prev_state, action, next_state, done)
+
 
 # Define a simple Observation namedtuple where
 # episode is the episode id,
 # time is the timestep within the episode,
-# state is the current observation,
+# prev_state is the previous observation,
 # action is the action taken,
 # next_state is the resulting observation after taking the action,
 # done is whether the episode ended after this transition
-Observation = namedtuple('Observation', ['episode', 'time', 'state', 'action', 'next_state', 'done'])
+Observation = namedtuple('Observation', ['episode', 'time', 'prev_state', 'action', 'next_state', 'done'])

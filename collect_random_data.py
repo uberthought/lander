@@ -4,10 +4,8 @@ import numpy as np
 import os
 import shutil
 import argparse
-from observation import Observation
+from observation import Observation, create_observation, normalize_state
 from ReplayBuffer import ReplayBuffer
-
-NORMALIZATION_FACTORS = np.array([1, 1.75, 4, 4, 3.1415927, 5, 1, 1], dtype=np.float32)
 
 def collect(env, episodes, video_folder):
     replay_buffer = ReplayBuffer()
@@ -19,11 +17,12 @@ def collect(env, episodes, video_folder):
         done = False
         truncated = False
         t = 0
-        obs, _ = env.reset()
-        obs = normalize_observation(obs)
-        obs = np.concatenate((obs, [1.0]))  # fuel level
-        obs = np.concatenate((obs, [0.0]))  # done flag
+        prev_state, _ = env.reset()
+        prev_state = normalize_state(prev_state)
         fuel = 1000
+        prev_state = np.concatenate((prev_state, [fuel / 1000.0]))
+        prev_transition = Observation(episode, t, prev_state, 0, prev_state, 0.0)
+
         while not done and not truncated:
             t += 1
             action = np.random.randint(0, 4)
@@ -35,30 +34,22 @@ def collect(env, episodes, video_folder):
                 action0 = np.array([1.0, 0.0], dtype=np.float32)
             elif action == 3:
                 action0 = np.array([0.0, -1.0], dtype=np.float32)
-            next_obs, _, done, truncated, _ = env.step(action0)
-            next_obs = normalize_observation(next_obs)
-            if done or truncated:
-                next_obs[0:6] = obs[0:6]
+            next_state, _, done, truncated, _ = env.step(action0)
+            next_state = normalize_state(next_state)
             if action != 0:
                 fuel -= 1
             done = done or truncated
-            next_obs = np.concatenate((next_obs, [fuel / 1000.0]))
-            next_obs = np.concatenate((next_obs, [1.0 if done else 0.0]))
-            transition = Observation(episode, t, obs, action, next_obs, float(done))
+            next_state = np.concatenate((next_state, [fuel / 1000.0]))
+            transition = create_observation(episode, t, prev_transition, action, next_state, done)
             replay_buffer.add(transition)
-            obs = next_obs
+            prev_transition = transition
+            prev_state = next_state
 
     try:
         replay_buffer.save()
         print(f"[autosave] Saved {len(replay_buffer)} observations -> {replay_buffer.filename}")
     except Exception as e:
         print(f"Autosave failed: {e}")
-
-def normalize_observation(obs):
-    obs = np.array(obs, dtype=np.float32)
-    obs = obs / NORMALIZATION_FACTORS
-    obs = np.clip(obs, -1.0, 1.0)
-    return obs
 
 def main():
     parser = argparse.ArgumentParser(description="Collect random data for LunarLander-v3.")

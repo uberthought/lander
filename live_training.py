@@ -7,17 +7,13 @@ import shutil
 import argparse
 from collections import deque
 
-from observation import Observation, calculate_value
+from observation import Observation, calculate_value, create_observation, normalize_state
 from ReplayBuffer import ReplayBuffer
 from world import WorldModel
 
-# Define the normalization factors for the observation space
-# These values are based on the observation space of the LunarLander-v2 environment
-# and are used to scale the observations to a range of approximately [-1, 1]
-# x, y, v_x, v_y, angle, v_angle
-NORMALIZATION_FACTORS = np.array([1, 1.75, 4, 4, 3.1415927, 5, 1, 1], dtype=np.float32)
+import time
 
-def train(env, episodes, train_every_n_episodes, video_folder):
+def train(env, seconds, train_every_n_episodes, video_folder):
     world_model = WorldModel()
 
     # Main long-term buffer (persistent) and recent buffer for on-policy-ish updates
@@ -30,21 +26,24 @@ def train(env, episodes, train_every_n_episodes, video_folder):
             
     os.makedirs(video_folder, exist_ok=True)
 
-    for episode in range(episodes):
+    start_time = time.time()
+    episode = 0
+    while time.time() - start_time < seconds:
         replay_buffer.increment_episode()
+        episode += 1
         done = False
         truncated = False
         t = 0
 
-        do_training = (episode + 1) > 0 and (episode + 1) % train_every_n_episodes == 0
-
-        obs, _ = env.reset()
-        obs = normalize_observation(obs)
-        obs = np.concatenate((obs, [1.0]))  # fuel level
-        obs = np.concatenate((obs, [0.0]))  # done flag
-
+        prev_state, _ = env.reset()
+        prev_state = normalize_state(prev_state)
         fuel = 1000
-    
+        prev_state = np.concatenate((prev_state, [fuel / 1000.0]))
+        prev_transition = Observation(episode, t, prev_state, 0, prev_state, 0.0)
+
+        do_training = (episode + 1) > 0 and (episode + 1) % train_every_n_episodes == 0
+        cumulative_snr = 0.0
+
         #########
         # Live testing loop start
         #########
@@ -62,47 +61,42 @@ def train(env, episodes, train_every_n_episodes, video_folder):
                 action0 = np.array([1.0, 0.0], dtype=np.float32)  # main thruster
             elif action == 3:
                 action0 = np.array([0.0, -1.0], dtype=np.float32)  # left thruster
-            next_obs, _, done, truncated, _ = env.step(action0)
+            next_state, _, done, truncated, _ = env.step(action0)
 
             # normalize the next observation
-            next_obs = normalize_observation(next_obs)
-
-            # if done, use the previous observation and add the legs and fuel level
-            if done or truncated:
-                next_obs[0] = obs[0]
-                next_obs[1] = obs[1]
-                next_obs[2] = obs[2]
-                next_obs[3] = obs[3]
-                next_obs[4] = obs[4]
-                next_obs[5] = obs[5]
+            next_state = normalize_state(next_state)
 
             # if the action is not to do nothing, decrease fuel
             if action != 0:
                 fuel -= 1
 
             done = done or truncated
-
-            # add the fuel level to the observation
-            next_obs = np.concatenate((next_obs, [fuel / 1000.0]))
-
-            # add done to the observation
-            next_obs = np.concatenate((next_obs, [1.0 if done else 0.0]))
-
-            transition = Observation(episode, t, obs, action, next_obs, float(done))
+            next_state = np.concatenate((next_state, [fuel / 1000.0]))
+            transition = create_observation(episode, t, prev_transition, action, next_state, done)
+            replay_buffer.add(transition)
+            prev_transition = transition
 
             replay_buffer.add(transition)
             replay_buffer0.append(transition)
 
             # print the next world prediction from the world model
+            predicted_change = world_model.predict(prev_state, action)
+            state_change = next_state - prev_state
+            signal = np.mean(state_change ** 2)
+            noise = np.mean((state_change - predicted_change) ** 2)
+            if noise == 0 or signal == 0:
+                snr = 0.0
+            else:
+                snr = 10 * np.log10(signal / noise)
+            # print(f"SNR={snr: 8.4f} dB")
 
-            world_prediction = world_model.predict(obs, action)
-            world_prediction_delta = world_prediction - next_obs
+            if np.isfinite(snr):
+                cumulative_snr += snr
 
-            signal = next_obs - obs
-            world_prediction_snr = 10 * np.log10(np.mean(signal ** 2) / (np.mean(world_prediction_delta ** 2) + 1e-8))
-            print(f"world prediction SNR: {world_prediction_snr:.4f} dB")
-
-            obs = next_obs
+            prev_state = next_state
+        
+        avg_snr = cumulative_snr / t
+        print(f"Episode {episode} ended after {t} timesteps with average SNR={avg_snr: 8.4f} dB")
 
         #########
         # Live testing loop end
@@ -145,10 +139,10 @@ def train(env, episodes, train_every_n_episodes, video_folder):
 
 def main():
     parser = argparse.ArgumentParser(description="Live training for the LunarLander-v2 environment.")
-    parser.add_argument("--episodes", type=int, default=128, help="Number of training episodes")
+    parser.add_argument("--seconds", type=int, default=600, help="Number of seconds to train")
     parser.add_argument('--train-every', type=int, default=4, help='Number of episodes between training sessions')
     parser.add_argument('--discount-factor', type=float, default=0.95, help='Discount factor for future rewards')
-    episodes = parser.parse_args().episodes
+    seconds = parser.parse_args().seconds
     train_every = parser.parse_args().train_every
     discount_factor = parser.parse_args().discount_factor
 
@@ -158,15 +152,9 @@ def main():
     env = gym.make("LunarLander-v3", continuous=True, render_mode="rgb_array")
     env = RecordVideo(env, video_folder="./videos", episode_trigger=lambda x: True, disable_logger=True)
 
-    train(env, episodes, train_every, video_folder="./videos")
+    train(env, seconds, train_every, video_folder="./videos")
 
     env.close()
-
-def normalize_observation(obs):
-    obs = np.array(obs, dtype=np.float32)
-    obs = obs / NORMALIZATION_FACTORS
-    obs = np.clip(obs, -1.0, 1.0)
-    return obs
 
 if __name__ == "__main__":
     main()
