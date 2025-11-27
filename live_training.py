@@ -40,6 +40,7 @@ def train(env, episodes, train_every_n_episodes, video_folder):
         obs, _ = env.reset()
         obs = normalize_observation(obs)
         obs = np.concatenate((obs, [1.0]))  # fuel level
+        obs = np.concatenate((obs, [0.0]))  # done flag
 
         fuel = 1000
     
@@ -83,7 +84,10 @@ def train(env, episodes, train_every_n_episodes, video_folder):
             # add the fuel level to the observation
             next_obs = np.concatenate((next_obs, [fuel / 1000.0]))
 
-            transition = Observation(obs, action, next_obs, done)
+            # add done to the observation
+            next_obs = np.concatenate((next_obs, [1.0 if done else 0.0]))
+
+            transition = Observation(obs, action, next_obs)
 
             replay_buffer.add(transition)
             replay_buffer0.append(transition)
@@ -125,7 +129,7 @@ def train(env, episodes, train_every_n_episodes, video_folder):
         # if it's time to train the model, do so
 
         if do_training:
-            sample_len = len(replay_buffer0) * 32
+            sample_len = len(replay_buffer0) * 8
             replay_buffer0 = list(replay_buffer0)
             for k in range(32):
                 training_sample = replay_buffer.sample(sample_len) + replay_buffer0

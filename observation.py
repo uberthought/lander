@@ -16,4 +16,4 @@ def calculate_value(obs):
     return value
     
 
-Observation = namedtuple('Observation', ['state', 'action', 'next_state', 'done'])
+Observation = namedtuple('Observation', ['state', 'action', 'next_state'])

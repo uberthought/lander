@@ -21,6 +21,7 @@ def collect(env, episodes, video_folder):
         obs, _ = env.reset()
         obs = normalize_observation(obs)
         obs = np.concatenate((obs, [1.0]))  # fuel level
+        obs = np.concatenate((obs, [0.0]))  # done flag
         fuel = 1000
         while not done and not truncated:
             t += 1
@@ -41,7 +42,8 @@ def collect(env, episodes, video_folder):
                 fuel -= 1
             done = done or truncated
             next_obs = np.concatenate((next_obs, [fuel / 1000.0]))
-            transition = Observation(obs, action, next_obs, done)
+            next_obs = np.concatenate((next_obs, [1.0 if done else 0.0]))
+            transition = Observation(obs, action, next_obs)
             replay_buffer.add(transition)
             obs = next_obs
 

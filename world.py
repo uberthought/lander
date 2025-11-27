@@ -29,6 +29,12 @@ class WorldNet(nn.Module):
                 nn.Linear(nodes, nodes),
             ) for _ in range(layers)
         ])
+        self.attn_weights = nn.ModuleList([
+            nn.Sequential(
+                nn.Linear(nodes, 1),
+                nn.Sigmoid()
+            ) for _ in range(layers)
+        ])
 
         self.output = nn.Sequential(
             nn.Linear(nodes, self.input_dim),
@@ -40,7 +46,8 @@ class WorldNet(nn.Module):
         x = self.input(x)
         for i in range(self.layers):
             skip_layer = self.skip_layers[i]
-            x = x + skip_layer(x)
+            attn = self.attn_weights[i]
+            x = x + attn(x) * skip_layer(x)
         x = self.output(x)
         return x
 
@@ -48,9 +55,9 @@ class WorldNet(nn.Module):
 class WorldModel:
     def __init__(self, model_path="models/world_model.pt"):
         self.model_path = model_path
-        self.input_dim = 9
+        self.input_dim = 10
         self.num_actions = 4
-        self.nodes = 64
+        self.nodes = (self.input_dim + self.num_actions) * 8
         self.layers = 12
 
         self.device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
