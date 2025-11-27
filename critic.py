@@ -20,10 +20,7 @@ class CriticNet(nn.Module):
         self.nodes = nodes
         self.layers = layers
         
-        self.input = nn.Sequential(
-            nn.Linear(self.input_dim + self.num_actions, nodes),
-            nn.LeakyReLU(),
-        )
+        self.input = nn.Linear(self.input_dim + self.num_actions, nodes)
 
         self.skip_layers = nn.ModuleList([
             nn.Sequential(
@@ -34,7 +31,6 @@ class CriticNet(nn.Module):
         ])
 
         self.output = nn.Sequential(
-            nn.LeakyReLU(),
             nn.Linear(nodes, 1),
             nn.Sigmoid()
         )

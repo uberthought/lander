@@ -20,10 +20,7 @@ class WorldNet(nn.Module):
         self.nodes = nodes
         self.layers = layers
         
-        self.input = nn.Sequential(
-            nn.Linear(self.input_dim + self.num_actions, nodes),
-            nn.LeakyReLU(),
-        )
+        self.input = nn.Linear(self.input_dim + self.num_actions, nodes)
 
         self.skip_layers = nn.ModuleList([
             nn.Sequential(
@@ -34,7 +31,6 @@ class WorldNet(nn.Module):
         ])
 
         self.output = nn.Sequential(
-            nn.LeakyReLU(),
             nn.Linear(nodes, self.input_dim),
             nn.Tanh()
         )
@@ -86,12 +82,14 @@ class WorldModel:
         states_0 = torch.tensor(np.array([obs.state for obs in observations]), dtype=torch.float32, device=self.device)
         states_1 = torch.tensor(np.array([obs.next_state for obs in observations]), dtype=torch.float32, device=self.device)
 
+        delta = states_1 - states_0
+
         actions_hot = F.one_hot(actions, num_classes=self.num_actions).float()
 
         # train the network
         self.optimizer.zero_grad()
         outputs = self.model(states_0, actions_hot)
-        loss = self.criterion(outputs, states_1)
+        loss = self.criterion(outputs, delta)
         loss.backward()
         self.optimizer.step()
 
@@ -114,3 +112,13 @@ class WorldModel:
                     os.remove(tmp_path)
             raise
 
+
+    def predict(self, state, action):
+        self.model.eval()
+        with torch.no_grad():
+            state_tensor = torch.tensor(state, dtype=torch.float32, device=self.device).reshape(1, -1)
+            action_hot = torch.zeros((1, self.num_actions), dtype=torch.float32, device=self.device)
+            action_hot[0, action] = 1.0
+            delta = self.model(state_tensor, action_hot).cpu().numpy().flatten()
+            next_state = state + delta
+        return next_state

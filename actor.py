@@ -19,22 +19,17 @@ class ActorNet(nn.Module):
         self.nodes = nodes
         self.layers = layers
         
-        self.input = nn.Sequential(
-            nn.Linear(self.input_dim, nodes),
-            nn.LeakyReLU()
-        )
+        self.input = nn.Linear(self.input_dim, nodes)
 
         self.skip_layers = nn.ModuleList([
             nn.Sequential(
                 nn.Linear(nodes, nodes),
                 nn.LeakyReLU(),
-                nn.Linear(nodes, nodes),
-                nn.BatchNorm1d(nodes)
+                nn.Linear(nodes, nodes)
             ) for _ in range(layers)
         ])
 
         self.output = nn.Sequential(
-            nn.LeakyReLU(),
             nn.Linear(nodes, num_actions),
             nn.Softmax(dim=-1)
         )

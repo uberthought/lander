@@ -92,42 +92,27 @@ def train(env, actor_model: ActorModel, critic_model: CriticModel, world_model: 
 
             value1 = calculate_value(torch.tensor(next_obs.reshape(1, -1), dtype=torch.float32, device=actor_model.device)).item()
 
-            # main_thruster_emoji = "▼"
-            # right_thruster_emoji = "▶"
-            # left_thruster_emoji = "◀"
-            # no_op_emoji = " "
-            # rocket = no_op_emoji if action == 0 else right_thruster_emoji if action == 1 else main_thruster_emoji if action == 2 else left_thruster_emoji
-            # print(f"Episode: {episode+1}/{episodes}, Step: {t}, Value: {value1:.4f}, Rocket: {rocket}, Prediction: {prediction}")
+            # print(f"Episode: {episode+1}/{episodes}, Step: {t}, Value: {value1:.4f}, Prediction: {prediction}")
 
-            actions = np.arange(critic_model.num_actions)
-            actions_onehot = np.eye(critic_model.num_actions)[actions]
-            sensors_tiled = np.tile(obs.reshape((1, -1)), (critic_model.num_actions, 1))
-            sensors_tiled_tensor = torch.tensor(sensors_tiled, dtype=torch.float32, device=critic_model.device)
-            actions_onehot_tensor = torch.tensor(actions_onehot, dtype=torch.float32, device=critic_model.device)
-            critic_predictions = critic_model.model(sensors_tiled_tensor, actions_onehot_tensor).cpu().detach().numpy().flatten()
-            print(f"value: {value1:.4f}  critic: {critic_predictions}  actor: {prediction} next_obs: {next_obs[0:6]}")
+            # actions = np.arange(critic_model.num_actions)
+            # actions_onehot = np.eye(critic_model.num_actions)[actions]
+            # sensors_tiled = np.tile(obs.reshape((1, -1)), (critic_model.num_actions, 1))
+            # sensors_tiled_tensor = torch.tensor(sensors_tiled, dtype=torch.float32, device=critic_model.device)
+            # actions_onehot_tensor = torch.tensor(actions_onehot, dtype=torch.float32, device=critic_model.device)
+            # critic_predictions = critic_model.model(sensors_tiled_tensor, actions_onehot_tensor).cpu().detach().numpy().flatten()
+            # print(f"value: {value1:.4f}  critic: {critic_predictions}  actor: {prediction} next_obs: {next_obs[0:6]}")
 
             # print the next world prediction from the world model
-            # actions_onehot = np.zeros((world_model.num_actions,), dtype=np.float32)
-            # actions_onehot[action] = 1.0
 
-            # action_onehot = torch.zeros((world_model.num_actions,), dtype=torch.float32, device=world_model.device)
-            # action_onehot[action] = 1.0
-            # action_onehot = action_onehot
-            # obs0 = torch.tensor(obs, dtype=torch.float32, device=world_model.device)
-            # world_prediction = world_model.model(obs0.reshape(1, -1), action_onehot.reshape(1, -1)).cpu().detach().numpy().flatten()
-            # world_prediction_delta = world_prediction - next_obs
+            world_prediction = world_model.predict(obs, action)
+            world_prediction_delta = world_prediction - next_obs
+            # world_prediction_rmse = np.sqrt(np.mean(world_prediction_delta ** 2))
             # print("world prediction delta: [" + ", ".join(f"{x:+0.4f}" for x in world_prediction_delta) + "]")
+            # print(f"world prediction RMSE: {world_prediction_rmse:.4f}")
 
-            # world_prediction_value = calculate_value(torch.tensor(world_prediction.reshape(1, -1), dtype=torch.float32, device=actor_model.device)).item()
-
-            # value_delta = world_prediction_value - value1
-            # print(f"world prediction value: {world_prediction_value:.4f} delta: {value_delta:+0.4f}")
-
-            # critic_prediction = critic_model.model(obs0.reshape(1, -1), action_onehot.reshape(1, -1)).cpu().detach().numpy().flatten()
-            # value_delta = critic_prediction[0] - value1
-            # print(f"world prediction value: {world_prediction_value:.4f}  critic prediction: {critic_prediction[0]:.4f} delta: {value_delta:+0.4f}")
-
+            signal = next_obs - obs
+            world_prediction_snr = 10 * np.log10(np.mean(signal ** 2) / (np.mean(world_prediction_delta ** 2) + 1e-8))
+            print(f"world prediction SNR: {world_prediction_snr:.4f} dB")
 
             obs = next_obs
 
