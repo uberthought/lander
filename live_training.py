@@ -1,5 +1,4 @@
 import torch
-from critic import CriticModel
 import gymnasium as gym
 from gymnasium.wrappers import RecordVideo
 import numpy as np
@@ -9,7 +8,6 @@ import argparse
 from collections import deque
 
 from observation import Observation, calculate_value
-from actor import ActorModel
 from ReplayBuffer import ReplayBuffer
 from world import WorldModel
 
@@ -19,7 +17,9 @@ from world import WorldModel
 # x, y, v_x, v_y, angle, v_angle
 NORMALIZATION_FACTORS = np.array([1, 1.75, 4, 4, 3.1415927, 5, 1, 1], dtype=np.float32)
 
-def train(env, actor_model: ActorModel, critic_model: CriticModel, world_model: WorldModel, episodes, train_every_n_episodes, video_folder):
+def train(env, episodes, train_every_n_episodes, video_folder):
+    world_model = WorldModel()
+
     # Main long-term buffer (persistent) and recent buffer for on-policy-ish updates
     # State shape is 8 from LunarLander-v3 plus fuel level
     replay_buffer = ReplayBuffer(state_shape=(9,))
@@ -49,9 +49,7 @@ def train(env, actor_model: ActorModel, critic_model: CriticModel, world_model: 
 
         while not done and not truncated:
             t += 1
-            action, prediction = actor_model.get_optimal_action(obs)
-
-
+            action = np.random.randint(0, 4)
 
             # actual action for continuous LunarLander-v3 based on discrete action
             if action == 0:
@@ -90,18 +88,6 @@ def train(env, actor_model: ActorModel, critic_model: CriticModel, world_model: 
             replay_buffer.add(transition)
             replay_buffer0.append(transition)
 
-            value1 = calculate_value(torch.tensor(next_obs.reshape(1, -1), dtype=torch.float32, device=actor_model.device)).item()
-
-            # print(f"Episode: {episode+1}/{episodes}, Step: {t}, Value: {value1:.4f}, Prediction: {prediction}")
-
-            # actions = np.arange(critic_model.num_actions)
-            # actions_onehot = np.eye(critic_model.num_actions)[actions]
-            # sensors_tiled = np.tile(obs.reshape((1, -1)), (critic_model.num_actions, 1))
-            # sensors_tiled_tensor = torch.tensor(sensors_tiled, dtype=torch.float32, device=critic_model.device)
-            # actions_onehot_tensor = torch.tensor(actions_onehot, dtype=torch.float32, device=critic_model.device)
-            # critic_predictions = critic_model.model(sensors_tiled_tensor, actions_onehot_tensor).cpu().detach().numpy().flatten()
-            # print(f"value: {value1:.4f}  critic: {critic_predictions}  actor: {prediction} next_obs: {next_obs[0:6]}")
-
             # print the next world prediction from the world model
 
             world_prediction = world_model.predict(obs, action)
@@ -125,8 +111,7 @@ def train(env, actor_model: ActorModel, critic_model: CriticModel, world_model: 
 
         video_path = f"{video_folder}/{env._video_name}.mp4"
         env.reset()
-        value1 = calculate_value(torch.tensor(next_obs.reshape(1, -1), dtype=torch.float32, device=actor_model.device)).item()
-        video_name_with_final_value = f"{video_folder}/episode_{episode+1}_value_{value1:.4f}_t_{t}.mp4"
+        video_name_with_final_value = f"{video_folder}/episode_{episode+1}_t_{t}.mp4"
         shutil.move(video_path, video_name_with_final_value)
 
         # remove every *.json and rl-video-episode-*.mp4 file that's created alongside the video
@@ -144,14 +129,9 @@ def train(env, actor_model: ActorModel, critic_model: CriticModel, world_model: 
             # sample_len = 2 ** 14
             replay_buffer0 = list(replay_buffer0)
             for k in range(32):
-                print(f"Training iteration {k} discount_factor={critic_model.discount_factor}...")
                 training_sample = replay_buffer.sample(sample_len) + replay_buffer0
-                critic_model.train(training_sample)
-                actor_model.train(training_sample)
                 world_model.train(training_sample)
 
-            critic_model.save()
-            actor_model.save()
             world_model.save()
 
             replay_buffer0 = deque(maxlen=40000)
@@ -176,13 +156,8 @@ def main():
     # env = gym.make("LunarLander-v3", render_mode="rgb_array")
     env = gym.make("LunarLander-v3", continuous=True, render_mode="rgb_array")
     env = RecordVideo(env, video_folder="./videos", episode_trigger=lambda x: True, disable_logger=True)
-    actor_model = ActorModel()
-    critic_model = CriticModel(discount_factor=discount_factor)
-    world_model = WorldModel()
-    actor_model.set_critic_model(critic_model)
-    critic_model.set_actor_model(actor_model)
 
-    train(env, actor_model, critic_model, world_model, episodes, train_every, video_folder="./videos")
+    train(env, episodes, train_every, video_folder="./videos")
 
     env.close()
 
