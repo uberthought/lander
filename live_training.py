@@ -31,6 +31,7 @@ def train(env, episodes, train_every_n_episodes, video_folder):
     os.makedirs(video_folder, exist_ok=True)
 
     for episode in range(episodes):
+        replay_buffer.increment_episode()
         done = False
         truncated = False
         t = 0
@@ -87,7 +88,7 @@ def train(env, episodes, train_every_n_episodes, video_folder):
             # add done to the observation
             next_obs = np.concatenate((next_obs, [1.0 if done else 0.0]))
 
-            transition = Observation(obs, action, next_obs)
+            transition = Observation(episode, t, obs, action, next_obs, float(done))
 
             replay_buffer.add(transition)
             replay_buffer0.append(transition)
@@ -96,9 +97,6 @@ def train(env, episodes, train_every_n_episodes, video_folder):
 
             world_prediction = world_model.predict(obs, action)
             world_prediction_delta = world_prediction - next_obs
-            # world_prediction_rmse = np.sqrt(np.mean(world_prediction_delta ** 2))
-            # print("world prediction delta: [" + ", ".join(f"{x:+0.4f}" for x in world_prediction_delta) + "]")
-            # print(f"world prediction RMSE: {world_prediction_rmse:.4f}")
 
             signal = next_obs - obs
             world_prediction_snr = 10 * np.log10(np.mean(signal ** 2) / (np.mean(world_prediction_delta ** 2) + 1e-8))

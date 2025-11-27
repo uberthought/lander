@@ -16,4 +16,11 @@ def calculate_value(obs):
     return value
     
 
-Observation = namedtuple('Observation', ['state', 'action', 'next_state'])
+# Define a simple Observation namedtuple where
+# episode is the episode id,
+# time is the timestep within the episode,
+# state is the current observation,
+# action is the action taken,
+# next_state is the resulting observation after taking the action,
+# done is whether the episode ended after this transition
+Observation = namedtuple('Observation', ['episode', 'time', 'state', 'action', 'next_state', 'done'])

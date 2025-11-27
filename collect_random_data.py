@@ -15,6 +15,7 @@ def collect(env, episodes, video_folder):
     os.makedirs(video_folder, exist_ok=True)
 
     for episode in range(episodes):
+        replay_buffer.increment_episode()
         done = False
         truncated = False
         t = 0
@@ -43,7 +44,7 @@ def collect(env, episodes, video_folder):
             done = done or truncated
             next_obs = np.concatenate((next_obs, [fuel / 1000.0]))
             next_obs = np.concatenate((next_obs, [1.0 if done else 0.0]))
-            transition = Observation(obs, action, next_obs)
+            transition = Observation(episode, t, obs, action, next_obs, float(done))
             replay_buffer.add(transition)
             obs = next_obs
 

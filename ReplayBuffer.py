@@ -12,6 +12,7 @@ class ReplayBuffer:
     """
 
     def __init__(self, maxlen: int | None = None, filename: str | None = None, compress: bool = True):
+        self._max_episode = 0
         self.maxlen = maxlen or 2**22 # 
         self.filename = filename or "replay_buffer.dat"
         self.compress = compress  # kept for compatibility, not used with memmap
@@ -30,6 +31,7 @@ class ReplayBuffer:
         else:
             self.size = 0
             self.write_pos = 0
+            self._max_episode = 0
             if self.state_shape is None:
                 raise ValueError("state_shape must be provided for new buffer")
             self._create_memmap()
@@ -43,7 +45,10 @@ class ReplayBuffer:
         dtype = np.dtype([
             ('state', np.float32, self.state_shape),
             ('action', np.float32),
-            ('next_state', np.float32, self.state_shape)
+            ('next_state', np.float32, self.state_shape),
+            ('episode', np.float32),
+            ('time', np.float32),
+            ('done', np.float32)
         ])
         
         self.buffer = np.memmap(
@@ -59,7 +64,10 @@ class ReplayBuffer:
         dtype = np.dtype([
             ('state', np.float32, self.state_shape),
             ('action', np.float32),
-            ('next_state', np.float32, self.state_shape)
+            ('next_state', np.float32, self.state_shape),
+            ('episode', np.float32),
+            ('time', np.float32),
+            ('done', np.float32)
         ])
         
         self.buffer = np.memmap(
@@ -68,6 +76,12 @@ class ReplayBuffer:
             mode=mode,
             shape=(self.maxlen,)
         )
+        # Set cached max episode after loading
+        if self.size > 0:
+            valid_indices = self._get_valid_indices()
+            self._max_episode = int(np.max(self.buffer[valid_indices]['episode']))
+        else:
+            self._max_episode = 0
     
     def _save_metadata(self):
         """Save buffer metadata (size, write position, state_shape) atomically.
@@ -88,6 +102,8 @@ class ReplayBuffer:
         self.size = int(meta['size'])
         self.write_pos = int(meta['write_pos'])
         self.state_shape = tuple(meta['state_shape'])
+        self._max_episode = 0  # will be set after memmap is opened
+
     
     def _get_valid_indices(self):
         """Get indices of valid data accounting for circular wrap.
@@ -113,22 +129,24 @@ class ReplayBuffer:
             state = observation.state
             action = observation.action
             next_state = observation.next_state
-        elif isinstance(observation, (tuple, list)):
-            state, action, next_state = observation[:3]
+            time = observation.time
+            done = observation.done
         else:
-            raise ValueError("Observation must be tuple/namedtuple with (state, action, next_state)")
+            raise ValueError("Observation must be tuple/namedtuple with (state, action, next_state, episode, time, done)")
 
         # Write to buffer
-        self.buffer[self.write_pos] = (state, action, next_state)
-        
+        # Always use cached max episode for new entries
+        episode_to_store = self._max_episode
+        self.buffer[self.write_pos] = (state, action, next_state, episode_to_store, time, done)
+
         # Update circular buffer pointers
         self.write_pos = (self.write_pos + 1) % self.maxlen
         self.size = min(self.size + 1, self.maxlen)
         
-        # Flush to disk periodically (every 100 writes)
-        if self.size % 100 == 0:
-            self.buffer.flush()
-            self._save_metadata()
+        # # Flush to disk periodically (every 100 writes)
+        # if self.size % 100 == 0:
+        #     self.buffer.flush()
+        #     self._save_metadata()
 
     # alias for compatibility with existing code that used a raw deque
     append = add
@@ -152,11 +170,14 @@ class ReplayBuffer:
             obs = self.buffer[i]
             # Create a simple object to mimic namedtuple behavior
             class Observation:
-                def __init__(self, state, action, next_state):
+                def __init__(self, state, action, next_state, episode, time, done):
                     self.state = state
                     self.action = action
                     self.next_state = next_state
-            samples.append(Observation(obs['state'], obs['action'], obs['next_state']))
+                    self.episode = episode
+                    self.time = time
+                    self.done = done
+            samples.append(Observation(obs['state'], obs['action'], obs['next_state'], obs['episode'], obs['time'], obs['done']))
 
         return samples
 
@@ -169,13 +190,15 @@ class ReplayBuffer:
         for i in valid_indices:
             obs = self.buffer[i]
             class Observation:
-                def __init__(self, state, action, next_state):
+                def __init__(self, state, action, next_state, episode, time, done):
                     self.state = state
                     self.action = action
                     self.next_state = next_state
-            yield Observation(obs['state'], obs['action'], obs['next_state'])
+                    self.episode = episode
+                    self.time = time
+                    self.done = done
+            yield Observation(obs['state'], obs['action'], obs['next_state'], obs['episode'], obs['time'], obs['done'])
 
-    # --- persistence ---
     def save(self, path: str | None = None):
         """Flush buffer to disk (data is already memory-mapped).
         
@@ -189,51 +212,10 @@ class ReplayBuffer:
         """Load is automatic with memmap - this is a no-op for compatibility."""
         pass
 
-    # --- utilities ---
-    def to_arrays(self):
-        """Return (states, actions, next_states) as numpy arrays."""
-        if self.size == 0:
-            return (
-                np.empty((0,) + self.state_shape, dtype=np.float32),
-                np.empty((0,), dtype=np.float32),
-                np.empty((0,) + self.state_shape, dtype=np.float32),
-                np.empty((0,), dtype=np.float32),
-            )
-        
-        valid_indices = self._get_valid_indices()
-        valid_data = self.buffer[valid_indices]
+    def increment_episode(self):
+        """Increment the cached maximum episode number."""
+        self._max_episode += 1
 
-        states = valid_data['state']
-        actions = valid_data['action']
-        next_states = valid_data['next_state']
-    
-        return states, actions, next_states
-
-    def shrink(self, keep_last: int):
-        """Keep only the most recent N observations (in-place)."""
-        if keep_last >= self.size:
-            return
-        
-        # Get the most recent keep_last indices from valid data
-        valid_indices = self._get_valid_indices()
-        recent_indices = valid_indices[-keep_last:]
-        
-        # Copy recent data to beginning of buffer
-        self.buffer[:keep_last] = self.buffer[recent_indices]
-        
-        self.size = keep_last
-        self.write_pos = keep_last % self.maxlen
-        self.buffer.flush()
-        self._save_metadata()
-
-    def maybe_autosave(self, every: int, episode: int):
-        """Autosave every N episodes (call from training loop)."""
-        if every > 0 and episode % every == 0:
-            try:
-                self.save()
-            except Exception as e:
-                print(f"ReplayBuffer autosave failed: {e}")
-    
     def close(self):
         """Explicitly close and flush the memory-mapped file."""
         if hasattr(self, 'buffer'):
