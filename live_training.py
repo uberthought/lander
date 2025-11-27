@@ -22,7 +22,7 @@ def train(env, episodes, train_every_n_episodes, video_folder):
 
     # Main long-term buffer (persistent) and recent buffer for on-policy-ish updates
     # State shape is 8 from LunarLander-v3 plus fuel level
-    replay_buffer = ReplayBuffer(state_shape=(9,))
+    replay_buffer = ReplayBuffer()
     replay_buffer0 = deque(maxlen=40000)
 
     # remove the videos folder
@@ -126,7 +126,6 @@ def train(env, episodes, train_every_n_episodes, video_folder):
 
         if do_training:
             sample_len = len(replay_buffer0) * 32
-            # sample_len = 2 ** 14
             replay_buffer0 = list(replay_buffer0)
             for k in range(32):
                 training_sample = replay_buffer.sample(sample_len) + replay_buffer0

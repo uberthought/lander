@@ -50,8 +50,8 @@ class WorldModel:
         self.model_path = model_path
         self.input_dim = 9
         self.num_actions = 4
-        self.nodes = self.input_dim * self.num_actions * 4
-        self.layers = 8
+        self.nodes = 64
+        self.layers = 12
 
         self.device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
         
@@ -59,7 +59,7 @@ class WorldModel:
         
         self.model.to(self.device)
         
-        self.optimizer = optim.Adam(self.model.parameters())
+        self.optimizer = optim.AdamW(self.model.parameters(), lr=3e-4, weight_decay=1e-5)
         self.criterion = nn.MSELoss()
         
     def set_actor_model(self, actor_model):
@@ -92,6 +92,8 @@ class WorldModel:
         loss = self.criterion(outputs, delta)
         loss.backward()
         self.optimizer.step()
+        
+        return loss.item()
 
     def save(self):
         fd1, tmp_path = tempfile.mkstemp(prefix='.tmp_world_', suffix='.pt', dir=os.path.dirname(self.model_path) or '.')

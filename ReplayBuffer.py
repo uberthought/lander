@@ -11,11 +11,11 @@ class ReplayBuffer:
     Each observation should be a tuple/namedtuple with (state, action, next_state, done).
     """
 
-    def __init__(self, maxlen: int | None = None, filename: str | None = None, state_shape: Tuple[int, ...] = None, compress: bool = True):
+    def __init__(self, maxlen: int | None = None, filename: str | None = None, compress: bool = True):
         self.maxlen = maxlen or 2**22 # 
         self.filename = filename or "replay_buffer.dat"
         self.compress = compress  # kept for compatibility, not used with memmap
-        self.state_shape = state_shape
+        self.state_shape = (9,)
         
         # Create directory if needed
         os.makedirs(os.path.dirname(os.path.abspath(self.filename)) or '.', exist_ok=True)
@@ -30,7 +30,7 @@ class ReplayBuffer:
         else:
             self.size = 0
             self.write_pos = 0
-            if state_shape is None:
+            if self.state_shape is None:
                 raise ValueError("state_shape must be provided for new buffer")
             self._create_memmap()
     
