@@ -159,6 +159,32 @@ class ReplayBuffer:
         for o in observations:
             self.add(o)
 
+    def sample2(self, k: int) -> List:
+        """Offset to a random position and read k observations sequentially."""
+        k = min(k, self.size)
+        if k == 0:
+            return []
+        
+        valid_indices = self._get_valid_indices()
+        start_idx = np.random.choice(valid_indices)
+        
+        samples = []
+        for i in range(k):
+            idx = (start_idx + i) % self.maxlen
+            obs = self.buffer[idx]
+            # Create a simple object to mimic namedtuple behavior
+            class Observation:
+                def __init__(self, prev_state, action, next_state, episode, time, done):
+                    self.prev_state = prev_state
+                    self.action = action
+                    self.next_state = next_state
+                    self.episode = episode
+                    self.time = time
+                    self.done = done
+            samples.append(Observation(obs['prev_state'], obs['action'], obs['next_state'], obs['episode'], obs['time'], obs['done']))
+
+        return samples
+
     def sample(self, k: int) -> List:
         """Sample k random observations from the buffer."""
         k = min(k, self.size)

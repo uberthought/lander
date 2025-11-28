@@ -22,7 +22,7 @@ def main():
     while time.time() - start_time < seconds:
         remaining_time = seconds - (time.time() - start_time)
         print(f"Training iteration {i} ... remaining time {remaining_time:.2f} seconds")
-        training_sample = replay_buffer.sample(2**sample_size)
+        training_sample = replay_buffer.sample2(2**sample_size)
         world_model.train(training_sample)
         i += 1
 

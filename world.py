@@ -54,7 +54,7 @@ class WorldModel:
         self.input_dim = 9
         self.num_actions = 4
         self.nodes = (self.input_dim + self.num_actions) * 8
-        self.layers = 24
+        self.layers = 64
 
         self.device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
         

@@ -124,7 +124,7 @@ def train(env, seconds, train_every_n_episodes, video_folder):
             sample_len = len(replay_buffer0) * 8
             replay_buffer0 = list(replay_buffer0)
             for k in range(32):
-                training_sample = replay_buffer.sample(sample_len) + replay_buffer0
+                training_sample = replay_buffer.sample2(sample_len) + replay_buffer0
                 world_model.train(training_sample)
 
             world_model.save()
