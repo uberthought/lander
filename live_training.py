@@ -43,6 +43,7 @@ def train(env, seconds, train_every_n_episodes, video_folder):
 
         do_training = (episode + 1) > 0 and (episode + 1) % train_every_n_episodes == 0
         cumulative_snr = 0.0
+        snr_list = []
 
         #########
         # Live testing loop start
@@ -92,11 +93,13 @@ def train(env, seconds, train_every_n_episodes, video_folder):
 
             if np.isfinite(snr):
                 cumulative_snr += snr
+                snr_list.append(snr)
 
             prev_state = next_state
         
-        avg_snr = cumulative_snr / t
-        print(f"Episode {episode} ended after {t} timesteps with average SNR={avg_snr: 8.4f} dB")
+        median_snr = np.median(snr_list) if snr_list else 0.0
+        std_snr = np.std(snr_list) if snr_list else 0.0
+        print(f"Episode {episode} ended after {t} timesteps with median SNR={median_snr: 8.4f} dB, std={std_snr: 8.4f} dB")
 
         #########
         # Live testing loop end
