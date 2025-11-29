@@ -25,17 +25,16 @@ def normalize_state(state):
     state = np.clip(state, -1.0, 1.0)
     return state
 
-def create_observation(episode, time, prev_transition, action, next_state, done):
-    prev_state = prev_transition.next_state
+def create_observation(episode, time, prev_state, actions, next_state, done):
     done = float(done)
-    return Observation(episode, time, prev_state, action, next_state, done)
+    return Observation(episode, time, prev_state, actions, next_state, done)
 
 
 # Define a simple Observation namedtuple where
 # episode is the episode id,
 # time is the timestep within the episode,
 # prev_state is the previous observation,
-# action is the action taken,
+# actions is a list of actions taken,
 # next_state is the resulting observation after taking the action,
 # done is whether the episode ended after this transition
-Observation = namedtuple('Observation', ['episode', 'time', 'prev_state', 'action', 'next_state', 'done'])
+Observation = namedtuple('Observation', ['episode', 'time', 'prev_state', 'actions', 'next_state', 'done'])

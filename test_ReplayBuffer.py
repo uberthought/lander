@@ -4,9 +4,9 @@ import tempfile
 import shutil
 from ReplayBuffer import ReplayBuffer
 
-def make_obs(state, action, next_state, time, done):
+def make_obs(state, actions, next_state, time, done):
     # Use dummy values for episode, will be overwritten by buffer
-    return (state, action, next_state, 0.0, time, done)
+    return (state, actions, next_state, 0.0, time, done)
 
 def remove_test_files(filename):
     if os.path.exists(filename):
@@ -71,7 +71,7 @@ def test_sample2_sequential():
     for i in range(1, len(times)):
         # Time should increment by 1 (wrapping around at modulo 2, but action should increment)
         assert samples[i].action == samples[i-1].action + 1, \
-            f"Actions should be sequential: {samples[i-1].action} -> {samples[i].action}"
+            f"Actions should be sequential: {samples[i-1].actions} -> {samples[i].actions}"
     
     # Also verify states are sequential
     for i in range(1, len(samples)):

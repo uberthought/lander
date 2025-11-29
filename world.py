@@ -6,7 +6,7 @@ import numpy as np
 import os
 import tempfile
 
-from observation import calculate_value
+from configuration import STATE_SIZE, ACTION_COUNT, NUM_ACTIONS, LAYER_COUNT, NODE_COUNT
 
 class SkipBlock(nn.Module):
     def __init__(self, nodes):
@@ -15,29 +15,40 @@ class SkipBlock(nn.Module):
         self.relu1 = nn.LeakyReLU()
         self.block2 = nn.Linear(nodes, nodes)
         self.relu2 = nn.LeakyReLU()
-    def forward(self, x):
-        s = x
+        self.attn = nn.Sequential(
+            nn.Linear(nodes, nodes // 8),
+            nn.LeakyReLU(),
+            nn.Linear(nodes // 8, nodes),
+            nn.Tanh()
+        )
+    def forward(self, input):
+        s = input
+        x = input
         x = self.block1(x)
         x = self.relu1(x)
         x = self.block2(x)
         x = x + s
         x = self.relu2(x)
+        a = self.attn(s)
+        x = x * a + s * (1 - a)
         return x
 
 # PyTorch World Model
 # input is the current state plus the action one-hot encoded
 # output is the predicted next state
 class WorldNet(nn.Module):
-    def __init__(self, input_dim, num_actions, nodes, layers):
+    def __init__(self, input_dim, nodes, layers, output_dim):
         super().__init__()
         self.input_dim = input_dim
-        self.num_actions = num_actions
         self.nodes = nodes
         self.layers = layers
         
-        self.input = nn.Linear(self.input_dim + self.num_actions, nodes)
+        self.input = nn.Linear(self.input_dim, nodes)
         self.skip_layers = nn.ModuleList([SkipBlock(nodes) for _ in range(layers)])
-        self.output = nn.Linear(nodes, self.input_dim)
+        self.output = nn.Sequential(
+            nn.Linear(nodes, output_dim),
+            nn.Tanh(),
+        )
 
     def forward(self, state, action):
         x = torch.cat([state, action], dim=-1)
@@ -45,20 +56,23 @@ class WorldNet(nn.Module):
         for i in range(self.layers):
             x = self.skip_layers[i](x)
         x = self.output(x)
+        x = x / 10.0
         return x
 
 
 class WorldModel:
     def __init__(self, model_path="models/world_model.pt"):
         self.model_path = model_path
-        self.input_dim = 9
-        self.num_actions = 4
-        self.nodes = (self.input_dim + self.num_actions) * 8
-        self.layers = 64
+        self.input_dim = STATE_SIZE
+        self.num_actions = NUM_ACTIONS
+        self.action_count = ACTION_COUNT
+        self.nodes = NODE_COUNT
+        self.layers = LAYER_COUNT
 
         self.device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
         
-        self.model = WorldNet(self.input_dim, self.num_actions, self.nodes, self.layers)
+        net_input_dim = self.input_dim + self.num_actions * self.action_count
+        self.model = WorldNet(net_input_dim, self.nodes, self.layers, self.input_dim)
         if os.path.exists(self.model_path):
             self.model.load_state_dict(torch.load(self.model_path, map_location="cpu"))
         
@@ -70,13 +84,14 @@ class WorldModel:
     def train(self, observations):
         self.model.train()
 
-        actions = torch.tensor([int(obs.action) for obs in observations], dtype=torch.long, device=self.device)
+        actions = torch.tensor(np.array([[int(a) for a in obs.actions] for obs in observations]), dtype=torch.long, device=self.device)
         states_0 = torch.tensor(np.array([obs.prev_state for obs in observations]), dtype=torch.float32, device=self.device)
         states_1 = torch.tensor(np.array([obs.next_state for obs in observations]), dtype=torch.float32, device=self.device)
 
         delta = states_1 - states_0
 
         actions_hot = F.one_hot(actions, num_classes=self.num_actions).float()
+        actions_hot = actions_hot.view(actions_hot.size(0), -1)
 
         # train the network
         self.optimizer.zero_grad()
@@ -107,11 +122,12 @@ class WorldModel:
             raise
 
 
-    def predict(self, state, action):
+    def predict(self, state, actions):
         self.model.eval()
         with torch.no_grad():
             state_tensor = torch.tensor(state, dtype=torch.float32, device=self.device).reshape(1, -1)
-            action_hot = torch.zeros((1, self.num_actions), dtype=torch.float32, device=self.device)
-            action_hot[0, action] = 1.0
-            delta = self.model(state_tensor, action_hot).cpu().numpy().flatten()
+            actions_tensor = torch.tensor(actions, dtype=torch.long, device=self.device).reshape(1, -1)
+            actions_hot = F.one_hot(actions_tensor, num_classes=self.num_actions).float()
+            actions_hot = actions_hot.view(1, -1)
+            delta = self.model(state_tensor, actions_hot).cpu().numpy().flatten()
         return delta

@@ -3,12 +3,13 @@ from typing import List, Tuple
 import random
 import numpy as np
 
+from configuration import STATE_SIZE, ACTION_COUNT
 
 class ReplayBuffer:
     """Memory-mapped cyclic buffer with automatic disk persistence.
 
     Stores observations as structured arrays in a memory-mapped file.
-    Each observation should be the collection with (prev_state, action, next_state, episode, time, done).
+    Each observation should be the collection with (prev_state, actions, next_state, episode, time, done).
     """
 
     def __init__(self, maxlen: int | None = None, filename: str | None = None, compress: bool = True):
@@ -16,7 +17,8 @@ class ReplayBuffer:
         self.maxlen = maxlen or 2**22 # 
         self.filename = filename or "replay_buffer.dat"
         self.compress = compress  # kept for compatibility, not used with memmap
-        self.state_shape = (9,)
+        self.state_shape = (STATE_SIZE,)
+        self.action_shape = (ACTION_COUNT,)
         
         # Create directory if needed
         os.makedirs(os.path.dirname(os.path.abspath(self.filename)) or '.', exist_ok=True)
@@ -44,7 +46,7 @@ class ReplayBuffer:
         
         dtype = np.dtype([
             ('prev_state', np.float32, self.state_shape),
-            ('action', np.float32),
+            ('actions', np.float32, self.action_shape),
             ('next_state', np.float32, self.state_shape),
             ('episode', np.float32),
             ('time', np.float32),
@@ -63,7 +65,7 @@ class ReplayBuffer:
         """Open existing memory-mapped file."""
         dtype = np.dtype([
             ('prev_state', np.float32, self.state_shape),
-            ('action', np.float32),
+            ('actions', np.float32, self.action_shape),
             ('next_state', np.float32, self.state_shape),
             ('episode', np.float32),
             ('time', np.float32),
@@ -121,26 +123,26 @@ class ReplayBuffer:
     def add(self, observation):
         """Add an observation to the buffer.
         
-        observation should be a tuple/namedtuple with (prev_state, action, next_state, episode, time, done)
+        observation should be a tuple/namedtuple with (prev_state, actions, next_state, episode, time, done)
         or have those attributes.
         """
         # Extract fields from observation
         if hasattr(observation, '_fields'):  # namedtuple
             prev_state = observation.prev_state
-            action = observation.action
+            actions = observation.actions
             next_state = observation.next_state
             episode = observation.episode
             time = observation.time
             done = observation.done
         elif isinstance(observation, (tuple, list)):
-            prev_state, action, next_state, episode, time, done = observation[:6]
+            prev_state, actions, next_state, episode, time, done = observation[:6]
         else:
-            raise ValueError("Observation must be tuple/namedtuple with (prev_state, action, next_state, episode, time, done)")
+            raise ValueError("Observation must be tuple/namedtuple with (prev_state, actions, next_state, episode, time, done)")
 
         # Write to buffer
         # Always use cached max episode for new entries
         episode_to_store = self.max_episode
-        self.buffer[self.write_pos] = (prev_state, action, next_state, episode_to_store, time, done)
+        self.buffer[self.write_pos] = (prev_state, actions, next_state, episode_to_store, time, done)
 
         
         # Update circular buffer pointers
@@ -174,14 +176,14 @@ class ReplayBuffer:
             obs = self.buffer[idx]
             # Create a simple object to mimic namedtuple behavior
             class Observation:
-                def __init__(self, prev_state, action, next_state, episode, time, done):
+                def __init__(self, prev_state, actions, next_state, episode, time, done):
                     self.prev_state = prev_state
-                    self.action = action
+                    self.actions = actions
                     self.next_state = next_state
                     self.episode = episode
                     self.time = time
                     self.done = done
-            samples.append(Observation(obs['prev_state'], obs['action'], obs['next_state'], obs['episode'], obs['time'], obs['done']))
+            samples.append(Observation(obs['prev_state'], obs['actions'], obs['next_state'], obs['episode'], obs['time'], obs['done']))
 
         return samples
 
@@ -200,14 +202,14 @@ class ReplayBuffer:
             obs = self.buffer[i]
             # Create a simple object to mimic namedtuple behavior
             class Observation:
-                def __init__(self, prev_state, action, next_state, episode, time, done):
+                def __init__(self, prev_state, actions, next_state, episode, time, done):
                     self.prev_state = prev_state
-                    self.action = action
+                    self.actions = actions
                     self.next_state = next_state
                     self.episode = episode
                     self.time = time
                     self.done = done
-            samples.append(Observation(obs['prev_state'], obs['action'], obs['next_state'], obs['episode'], obs['time'], obs['done']))
+            samples.append(Observation(obs['prev_state'], obs['actions'], obs['next_state'], obs['episode'], obs['time'], obs['done']))
 
         return samples
 
@@ -220,14 +222,14 @@ class ReplayBuffer:
         for i in valid_indices:
             obs = self.buffer[i]
             class Observation:
-                def __init__(self, prev_state, action, next_state, episode, time, done):
+                def __init__(self, prev_state, actions, next_state, episode, time, done):
                     self.prev_state = prev_state
-                    self.action = action
+                    self.actions = actions
                     self.next_state = next_state
                     self.episode = episode
                     self.time = time
                     self.done = done
-            yield Observation(obs['prev_state'], obs['action'], obs['next_state'], obs['episode'], obs['time'], obs['done'])
+            yield Observation(obs['prev_state'], obs['actions'], obs['next_state'], obs['episode'], obs['time'], obs['done'])
 
     # --- persistence ---
     def save(self, path: str | None = None):
@@ -260,7 +262,7 @@ class ReplayBuffer:
         valid_data = self.buffer[valid_indices]
 
         prev_states = valid_data['prev_state']
-        actions = valid_data['action']
+        actions = valid_data['actions']
         next_states = valid_data['next_state']
         episodes = valid_data['episode']
         times = valid_data['time']
