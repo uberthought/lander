@@ -15,12 +15,6 @@ class SkipBlock(nn.Module):
         self.relu1 = nn.LeakyReLU()
         self.block2 = nn.Linear(nodes, nodes)
         self.relu2 = nn.LeakyReLU()
-        self.attn = nn.Sequential(
-            nn.Linear(nodes, nodes // 8),
-            nn.LeakyReLU(),
-            nn.Linear(nodes // 8, nodes),
-            nn.Tanh()
-        )
     def forward(self, input):
         s = input
         x = input
@@ -29,8 +23,6 @@ class SkipBlock(nn.Module):
         x = self.block2(x)
         x = x + s
         x = self.relu2(x)
-        a = self.attn(s)
-        x = x * a + s * (1 - a)
         return x
 
 # PyTorch World Model
