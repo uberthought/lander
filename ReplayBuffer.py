@@ -3,7 +3,7 @@ from typing import List, Tuple
 import random
 import numpy as np
 
-from configuration import STATE_SIZE, ACTION_COUNT
+from configuration import NUM_ACTIONS, STATE_SIZE
 
 class ReplayBuffer:
     """Memory-mapped cyclic buffer with automatic disk persistence.
@@ -18,7 +18,7 @@ class ReplayBuffer:
         self.filename = filename or "replay_buffer.dat"
         self.compress = compress  # kept for compatibility, not used with memmap
         self.state_shape = (STATE_SIZE,)
-        self.action_shape = (ACTION_COUNT,)
+        self.action_shape = (NUM_ACTIONS,)
         
         # Create directory if needed
         os.makedirs(os.path.dirname(os.path.abspath(self.filename)) or '.', exist_ok=True)

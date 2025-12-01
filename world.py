@@ -6,7 +6,7 @@ import numpy as np
 import os
 import tempfile
 
-from configuration import STATE_SIZE, ACTION_COUNT, NUM_ACTIONS, LAYER_COUNT, NODE_COUNT
+from configuration import STATE_SIZE, POSSIBLE_ACTIONS, NUM_ACTIONS, LAYER_COUNT, NODE_COUNT
 
 class SkipBlock(nn.Module):
     def __init__(self, nodes):
@@ -48,7 +48,6 @@ class WorldNet(nn.Module):
         for i in range(self.layers):
             x = self.skip_layers[i](x)
         x = self.output(x)
-        x = x / 10.0
         return x
 
 
@@ -57,13 +56,13 @@ class WorldModel:
         self.model_path = model_path
         self.input_dim = STATE_SIZE
         self.num_actions = NUM_ACTIONS
-        self.action_count = ACTION_COUNT
+        self.possible_actions = POSSIBLE_ACTIONS
         self.nodes = NODE_COUNT
         self.layers = LAYER_COUNT
 
         self.device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
         
-        net_input_dim = self.input_dim + self.num_actions * self.action_count
+        net_input_dim = self.input_dim + self.num_actions * self.possible_actions
         self.model = WorldNet(net_input_dim, self.nodes, self.layers, self.input_dim)
         if os.path.exists(self.model_path):
             self.model.load_state_dict(torch.load(self.model_path, map_location="cpu"))
@@ -82,7 +81,7 @@ class WorldModel:
 
         delta = states_1 - states_0
 
-        actions_hot = F.one_hot(actions, num_classes=self.num_actions).float()
+        actions_hot = F.one_hot(actions, num_classes=self.possible_actions).float()
         actions_hot = actions_hot.view(actions_hot.size(0), -1)
 
         # train the network
@@ -119,7 +118,7 @@ class WorldModel:
         with torch.no_grad():
             state_tensor = torch.tensor(state, dtype=torch.float32, device=self.device).reshape(1, -1)
             actions_tensor = torch.tensor(actions, dtype=torch.long, device=self.device).reshape(1, -1)
-            actions_hot = F.one_hot(actions_tensor, num_classes=self.num_actions).float()
+            actions_hot = F.one_hot(actions_tensor, num_classes=self.possible_actions).float()
             actions_hot = actions_hot.view(1, -1)
             delta = self.model(state_tensor, actions_hot).cpu().numpy().flatten()
         return delta

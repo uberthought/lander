@@ -7,13 +7,14 @@ import shutil
 import argparse
 from collections import deque
 
-from observation import Observation, calculate_value, create_observation, normalize_state
+from observation import create_observation, normalize_state
 from ReplayBuffer import ReplayBuffer
 from world import WorldModel
+from actor import ActorModel
 
 import time
 
-from configuration import ACTION_COUNT
+from configuration import NUM_ACTIONS, POSSIBLE_ACTIONS
 
 def _step_action(action, env, fuel):
     if action == 0:
@@ -35,6 +36,7 @@ def _step_action(action, env, fuel):
 
 def train(env, seconds, train_every_n_episodes, video_folder):
     world_model = WorldModel()
+    actor_model = ActorModel()
 
     # Main long-term buffer (persistent) and recent buffer for on-policy-ish updates
     # State shape is 8 from LunarLander-v3 plus fuel level
@@ -69,7 +71,8 @@ def train(env, seconds, train_every_n_episodes, video_folder):
 
         while not done and not truncated:
             t += 1
-            actions = np.random.randint(0, 4, size=ACTION_COUNT).tolist()
+            # actions = np.random.randint(0, POSSIBLE_ACTIONS, size=NUM_ACTIONS).tolist()
+            actions = actor_model.get_best_actions([prev_state])[0].tolist()
 
             for action in actions:
                 next_state, done = _step_action(action, env, fuel)
@@ -127,13 +130,15 @@ def train(env, seconds, train_every_n_episodes, video_folder):
 
         if do_training:
             # sample_len = len(replay_buffer0) * 8
-            sample_len = 2 ** 14
+            sample_len = 2 ** 10
             replay_buffer0 = list(replay_buffer0)
             for k in range(32):
                 training_sample = replay_buffer.sample(sample_len) + replay_buffer0
                 world_model.train(training_sample)
+                actor_model.train(training_sample)
 
             world_model.save()
+            actor_model.save()
 
             replay_buffer0 = deque(maxlen=40000)
             # Autosave observations
