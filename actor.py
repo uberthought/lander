@@ -56,7 +56,7 @@ class ActorModel:
         self.possible_actions = POSSIBLE_ACTIONS
         self.nodes = NODE_COUNT
         self.layers = LAYER_COUNT
-        self.discount_factor = 0.25
+        self.discount_factor = 0.5
 
         self.device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
         
@@ -91,36 +91,23 @@ class ActorModel:
         actions_1_onehot = F.one_hot(actions_1, num_classes=self.possible_actions).unsqueeze(0)
         actions_1_onehot = actions_1_onehot.view(-1, self.num_actions * self.possible_actions)
         actions_1_onehot = actions_1_onehot.repeat(states_1.size(0), 1, 1)
-        # actions_1_onehot = F.one_hot(torch.arange(self.possible_actions, device=self.device), num_classes=self.possible_actions).unsqueeze(0).repeat(len(states_1), 1, 1)
-        # inputs_1 = torch.cat([states_1_tile, actions_1_onehot], dim=-1).view(-1, self.input_dim + self.num_actions * self.possible_actions)
         inputs_1 = torch.cat([states_1_tile, actions_1_onehot], dim=-1)
-        # inputs_1 = inputs_1.view(-1, self.input_dim + self.possible_actions * self.num_actions)
 
         # compute future rewards
         with torch.no_grad():
             q_rewards = self.model(inputs_1)
 
-        # print(states_1.shape)
-        # torch.Size([11823, 9])
-
-        # print(q_rewards.shape)
-        # torch.Size([11823, 16, 1])
-
         future_rewards = torch.max(q_rewards, dim=1)[0]
-
-        # print(future_rewards.shape)
-        # torch.Size([11823, 1])
 
         not_done_1 = 1.0 - dones.view(-1, 1)
         future_rewards = future_rewards * not_done_1
-        future_rewards = self.discount_factor * future_rewards
 
         # compute current rewards
         current_rewards = calculate_reward(states_1).view(-1, 1)
-        # current_rewards = (1.0 - self.discount_factor) * current_rewards
 
         # set the rewards target
-        rewards = current_rewards + future_rewards
+        # rewards = (1.0 - self.discount_factor) * current_rewards + self.discount_factor * future_rewards
+        rewards = current_rewards + self.discount_factor * future_rewards
 
         # optimize the model
         self.optimizer.zero_grad()
@@ -160,13 +147,7 @@ class ActorModel:
         actions_1_onehot = F.one_hot(actions_1, num_classes=self.possible_actions).unsqueeze(0)
         actions_1_onehot = actions_1_onehot.view(-1, self.num_actions * self.possible_actions)
 
-        # print(actions_1_onehot.shape)
-        # torch.Size([16, 8])
-
         actions_1_onehot = actions_1_onehot.repeat(states_tensor.size(0), 1, 1)
-        # print(actions_1_onehot.shape)
-        # torch.Size([1, 16, 8])
-
         states_expanded = states_tensor.unsqueeze(1).repeat(1, self.possible_actions ** self.num_actions, 1)
         inputs_1 = torch.cat([states_expanded, actions_1_onehot], dim=-1)
 
