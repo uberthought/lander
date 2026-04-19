@@ -81,8 +81,6 @@ def train(env, seconds, train_every_n_episodes, video_folder):
 
             transition = create_observation(episode, t, prev_state, actions, next_state, done)
             replay_buffer.add(transition)
-
-            replay_buffer.add(transition)
             replay_buffer0.append(transition)
 
             # print the next world prediction from the world model
@@ -152,10 +150,8 @@ def main():
     parser = argparse.ArgumentParser(description="Live training for the LunarLander-v2 environment.")
     parser.add_argument("--seconds", type=int, default=600, help="Number of seconds to train")
     parser.add_argument('--train-every', type=int, default=4, help='Number of episodes between training sessions')
-    parser.add_argument('--discount-factor', type=float, default=0.95, help='Discount factor for future rewards')
     seconds = parser.parse_args().seconds
     train_every = parser.parse_args().train_every
-    discount_factor = parser.parse_args().discount_factor
 
     np.set_printoptions(formatter={'float': lambda x: "{0:+0.4f}".format(x)})
 
