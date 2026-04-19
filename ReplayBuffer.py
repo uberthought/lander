@@ -149,10 +149,9 @@ class ReplayBuffer:
         self.write_pos = (self.write_pos + 1) % self.maxlen
         self.size = min(self.size + 1, self.maxlen)
         
-        # Flush to disk periodically (every 100 writes)
-        if self.size % 100 == 0:
-            self.buffer.flush()
-            self._save_metadata()
+        # Always flush and save metadata after every write to ensure write_pos and size are accurate
+        self.buffer.flush()
+        self._save_metadata()
 
     # alias for compatibility with existing code that used a raw deque
     append = add
@@ -162,17 +161,28 @@ class ReplayBuffer:
             self.add(o)
 
     def sample2(self, k: int) -> List:
-        """Offset to a random position and read k observations sequentially."""
+        """Offset to a random position and read k observations sequentially (never wraps into uninitialized slots)."""
         k = min(k, self.size)
         if k == 0:
             return []
-        
         valid_indices = self._get_valid_indices()
-        start_idx = np.random.choice(valid_indices)
-        
+        # If buffer is not full, only sample within [0, size)
+        if self.size < self.maxlen:
+            # Only valid indices are [0, size)
+            max_start = self.size - k
+            if max_start < 0:
+                # Not enough data for a full sequence, just return as many as possible from the start
+                start_idx = 0
+                k = self.size
+            else:
+                start_idx = np.random.randint(0, max_start + 1)
+            indices = np.arange(start_idx, start_idx + k)
+        else:
+            # Buffer is full, can wrap around
+            start_idx = np.random.choice(valid_indices)
+            indices = (start_idx + np.arange(k)) % self.maxlen
         samples = []
-        for i in range(k):
-            idx = (start_idx + i) % self.maxlen
+        for idx in indices:
             obs = self.buffer[idx]
             # Create a simple object to mimic namedtuple behavior
             class Observation:
@@ -184,7 +194,6 @@ class ReplayBuffer:
                     self.time = time
                     self.done = done
             samples.append(Observation(obs['prev_state'], obs['actions'], obs['next_state'], obs['episode'], obs['time'], obs['done']))
-
         return samples
 
     def sample(self, k: int) -> List:
