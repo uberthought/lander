@@ -31,7 +31,7 @@ This repository implements a deep reinforcement learning (RL) agent for the Luna
 - `actor.py` — Actor model (Q-value predictor)
 - `world.py` — World model (next-state predictor)
 - `ReplayBuffer.py` — Experience replay buffer
-- `observation.py` — State normalization and reward calculation
+- `observation.py` — Reward calculation and observation container
 - `training.py` — Offline training script
 - `live_training.py` — Live training with environment interaction
 - `collect_random_data.py` — Collects random experience for buffer seeding
@@ -71,7 +71,7 @@ python3 test_ReplayBuffer.py
 ```
 
 ## Architecture
-- **State**: 9-dimensional vector (8 base + normalized fuel)
+- **State**: 9-dimensional vector (8 base + fuel fraction)
 - **Actions**: 2 simultaneous, 4 options each (16 combos, one-hot encoded)
 - **Neural Net**: 4 skip blocks, 64 nodes/layer, LeakyReLU, AdamW, MSELoss
 - **Persistence**: Atomic file saves for buffer and metadata

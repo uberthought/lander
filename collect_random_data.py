@@ -3,7 +3,7 @@ import numpy as np
 import os
 import shutil
 import argparse
-from observation import create_observation, normalize_state
+from observation import create_observation
 from ReplayBuffer import ReplayBuffer
 
 from configuration import NUM_ACTIONS, POSSIBLE_ACTIONS
@@ -18,7 +18,6 @@ def step_action(action, env, fuel):
     elif action == 3:
         action0 = np.array([0.0, -1.0], dtype=np.float32)
     next_state, _, done, truncated, _ = env.step(action0)
-    next_state = normalize_state(next_state)
     if action != 0:
         fuel -= 1
     done = done or truncated
@@ -37,7 +36,6 @@ def collect(env, episodes, video_folder):
         truncated = False
         t = 0
         prev_state, _ = env.reset()
-        prev_state = normalize_state(prev_state)
         fuel = 1000
         prev_state = np.concatenate((prev_state, [fuel / 1000.0]))
 

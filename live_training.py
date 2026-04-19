@@ -7,7 +7,7 @@ import shutil
 import argparse
 from collections import deque
 
-from observation import create_observation, normalize_state
+from observation import create_observation
 from ReplayBuffer import ReplayBuffer
 from world import WorldModel
 from actor import ActorModel
@@ -15,6 +15,17 @@ from actor import ActorModel
 import time
 
 from configuration import NUM_ACTIONS, POSSIBLE_ACTIONS
+
+CONTINUOUS_STATE_DIM = 6
+
+def _compute_snr(state_change, predicted_change):
+    state_change = state_change[:CONTINUOUS_STATE_DIM]
+    predicted_change = predicted_change[:CONTINUOUS_STATE_DIM]
+    signal = np.mean(state_change ** 2)
+    noise = np.mean((state_change - predicted_change) ** 2)
+    if noise == 0 or signal == 0:
+        return 0.0
+    return 10 * np.log10(signal / noise)
 
 def _step_action(action, env, fuel):
     if action == 0:
@@ -26,7 +37,6 @@ def _step_action(action, env, fuel):
     elif action == 3:
         action0 = np.array([0.0, -1.0], dtype=np.float32)
     next_state, _, done, truncated, _ = env.step(action0)
-    next_state = normalize_state(next_state)
     if action != 0:
         fuel -= 1
     done = done or truncated
@@ -59,11 +69,10 @@ def train(env, seconds, train_every_n_episodes, video_folder):
         t = 0
 
         prev_state, _ = env.reset()
-        prev_state = normalize_state(prev_state)
         fuel = 1000
         prev_state = np.concatenate((prev_state, [fuel / 1000.0]))
 
-        do_training = (episode + 1) > 0 and (episode + 1) % train_every_n_episodes == 0
+        do_training = train_every_n_episodes > 0 and episode % train_every_n_episodes == 0
 
         #########
         # Live testing loop start
@@ -86,12 +95,7 @@ def train(env, seconds, train_every_n_episodes, video_folder):
             # print the next world prediction from the world model
             predicted_change = world_model.predict(prev_state, actions)
             state_change = next_state - prev_state
-            signal = np.mean(state_change ** 2)
-            noise = np.mean((state_change - predicted_change) ** 2)
-            if noise == 0 or signal == 0:
-                snr = 0.0
-            else:
-                snr = 10 * np.log10(signal / noise)
+            snr = _compute_snr(state_change, predicted_change)
             # print(f"SNR={snr: 8.4f} dB")
 
             if np.isfinite(snr):
@@ -103,6 +107,7 @@ def train(env, seconds, train_every_n_episodes, video_folder):
         median_snr = np.median(snr_list) if snr_list else 0.0
         std_snr = np.std(snr_list) if snr_list else 0.0
         print(f"Episode {episode} ended after {t} timesteps with median SNR={median_snr: 8.4f} dB, std={std_snr: 8.4f} dB")
+        snr_list = []
 
         #########
         # Live testing loop end
@@ -134,6 +139,14 @@ def train(env, seconds, train_every_n_episodes, video_folder):
                 training_sample = replay_buffer.sample(sample_len) + replay_buffer0
                 world_model.train(training_sample)
                 actor_model.train(training_sample)
+
+            # validation_mse = _world_model_validation_mse(world_model, validation_sample)
+            # if validation_mse is not None:
+            #     print(f"[validation] Episode {episode}: fixed-sample world-model MSE={validation_mse:.6f}")
+            #     validation_mse_by_dim = _world_model_validation_mse_by_dim(world_model, validation_sample)
+            #     validation_contact_accuracy = _validation_contact_accuracy(world_model, validation_sample)
+            #     print(f"[validation] Episode {episode}: per-dim MSE: {_format_mse_by_dim(validation_mse_by_dim)}")
+            #     print(f"[validation] Episode {episode}: contact accuracy: left_leg={validation_contact_accuracy[0]:.4f}, right_leg={validation_contact_accuracy[1]:.4f}")
 
             world_model.save()
             actor_model.save()

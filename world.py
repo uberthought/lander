@@ -37,10 +37,7 @@ class WorldNet(nn.Module):
         
         self.input = nn.Linear(self.input_dim, nodes)
         self.skip_layers = nn.ModuleList([SkipBlock(nodes) for _ in range(layers)])
-        self.output = nn.Sequential(
-            nn.Linear(nodes, output_dim),
-            nn.Tanh(),
-        )
+        self.output = nn.Linear(nodes, output_dim)
 
     def forward(self, state, action):
         x = torch.cat([state, action], dim=-1)
@@ -73,6 +70,9 @@ class WorldModel:
         self.criterion = nn.MSELoss()
         
     def train(self, observations):
+        if not observations:
+            return None
+
         self.model.train()
 
         actions = torch.tensor(np.array([[int(a) for a in obs.actions] for obs in observations]), dtype=torch.long, device=self.device)

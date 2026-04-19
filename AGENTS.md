@@ -31,7 +31,7 @@ This file provides essential guidance for AI coding agents working in this codeb
 
 ## Project Conventions
 
-- **State:** 9-dim vector (8-dim base + normalized fuel)
+- **State:** 9-dim vector (8-dim base + fuel fraction)
 - **Actions:** 2 simultaneous, 4 options each (16 combos, one-hot encoded)
 - **Neural net:** 4 skip blocks, 64 nodes/layer, LeakyReLU, AdamW, MSELoss
 - **Device:** Uses MPS if available, else CPU
@@ -56,7 +56,7 @@ This file provides essential guidance for AI coding agents working in this codeb
 - [configuration.py](configuration.py): Central config
 - [ReplayBuffer.py](ReplayBuffer.py): Persistence, sampling
 - [actor.py](actor.py), [world.py](world.py): Model patterns
-- [observation.py](observation.py): State normalization, reward
+- [observation.py](observation.py): Reward and observation tuple
 - [live_training.py](live_training.py): Training loop, SNR, video
 
 ---
