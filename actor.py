@@ -103,12 +103,13 @@ class ActorModel:
         future_rewards = future_rewards * not_done_1
 
         # compute current rewards
-        prev_rewards = calculate_reward(states_0).view(-1, 1)
+        # prev_rewards = calculate_reward(states_0).view(-1, 1)
         current_rewards = calculate_reward(states_1).view(-1, 1)
 
         # set the rewards target
         # rewards = (1.0 - self.discount_factor) * current_rewards + self.discount_factor * future_rewards
-        rewards = (current_rewards - prev_rewards) + self.discount_factor * future_rewards
+        # rewards = (current_rewards - prev_rewards) + self.discount_factor * future_rewards
+        rewards = current_rewards + self.discount_factor * future_rewards
 
         # optimize the model
         self.optimizer.zero_grad()

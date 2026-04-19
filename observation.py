@@ -1,10 +1,23 @@
+
 import numpy as np
 from collections import namedtuple
 import torch
 
+# Make normalization factors available at module level
+NORMALIZATION_FACTORS = np.array([1, 1.75, 4, 4, 3.1415927, 5, 1, 1, 1, 1, 1], dtype=np.float32)
+# indices 9,10 are sin(angle) and cos(angle), already in [-1,1] so norm factor = 1
+
 def calculate_reward(obs):
-    sensors = obs[:, :6]
-    fuel = obs[:, 8:9]
+    # Normalize observations using the module-level NORMALIZATION_FACTORS
+    # Expect `obs` to be a torch tensor of shape (batch, state_dim)
+    if not isinstance(obs, torch.Tensor):
+        obs = torch.tensor(obs, dtype=torch.float32)
+
+    norm = torch.tensor(NORMALIZATION_FACTORS, dtype=obs.dtype, device=obs.device)
+    obs_norm = obs / norm
+
+    sensors = obs_norm[:, :6]
+    fuel = obs_norm[:, 8:9]
 
     sensors = torch.abs(sensors)
     sensors = torch.clamp(sensors, 0, 1)
@@ -13,16 +26,6 @@ def calculate_reward(obs):
     value = torch.mean(sensors, dim=1)
 
     return value
-
-def _normalize_state(state):
-    # Define the normalization factors for the observation space
-    # These values are based on the observation space of the LunarLander-v2 environment
-    # and are used to scale the observations to a range of approximately [-1, 1]
-    # x, y, v_x, v_y, angle, v_angle, left_leg, right_leg, fuel
-    NORMALIZATION_FACTORS = np.array([1, 1.75, 4, 4, 3.1415927, 5, 1, 1, 1], dtype=np.float32)
-    state = np.array(state, dtype=np.float32)
-    state = state / NORMALIZATION_FACTORS
-    return state
 
 def create_observation(episode, time, prev_state, actions, next_state, done):
     done = float(done)

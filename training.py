@@ -27,7 +27,13 @@ def main():
         print(f"Training iteration {i} ... remaining time {remaining_time:.2f} seconds")
         training_sample = replay_buffer.sample(2**sample_size)
         actor_model.train(training_sample)
-        world_model.train(training_sample)
+        world_metrics = world_model.train(training_sample)
+        if world_metrics is not None:
+            per_parameter_loss = ", ".join(
+                f"{name}={value:.6f}" for name, value in world_metrics['per_parameter_loss'].items()
+            )
+            # print(f"World model error: {world_metrics['loss']:.6f}")
+            # print(f"World model error by parameter: {per_parameter_loss}")
         i += 1
 
     actor_model.save()

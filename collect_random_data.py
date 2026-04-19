@@ -21,7 +21,8 @@ def step_action(action, env, fuel):
     if action != 0:
         fuel -= 1
     done = done or truncated
-    next_state = np.concatenate((next_state, [fuel / 1000.0]))
+    angle = next_state[4]
+    next_state = np.concatenate((next_state, [fuel / 1000.0, np.sin(angle), np.cos(angle)]))
 
     return next_state, done, fuel
 
@@ -37,7 +38,7 @@ def collect(env, episodes, video_folder):
         t = 0
         prev_state, _ = env.reset()
         fuel = 1000
-        prev_state = np.concatenate((prev_state, [fuel / 1000.0]))
+        prev_state = np.concatenate((prev_state, [fuel / 1000.0, np.sin(prev_state[4]), np.cos(prev_state[4])]))
 
         while not done and not truncated:
             t += 1

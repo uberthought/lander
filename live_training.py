@@ -9,7 +9,7 @@ from collections import deque
 
 from observation import create_observation
 from ReplayBuffer import ReplayBuffer
-from world import WorldModel
+from world import WorldModel, STATE_PARAMETER_NAMES
 from actor import ActorModel
 
 import time
@@ -17,6 +17,7 @@ import time
 from configuration import NUM_ACTIONS, POSSIBLE_ACTIONS
 
 CONTINUOUS_STATE_DIM = 6
+VALIDATION_SAMPLE_SIZE = 2 ** 10
 
 def _compute_snr(state_change, predicted_change):
     state_change = state_change[:CONTINUOUS_STATE_DIM]
@@ -26,6 +27,37 @@ def _compute_snr(state_change, predicted_change):
     if noise == 0 or signal == 0:
         return 0.0
     return 10 * np.log10(signal / noise)
+
+def _format_named_values(names, values):
+    return ", ".join(f"{name}={value:.6f}" for name, value in zip(names, values))
+
+def _world_model_validation_metrics(world_model, validation_sample):
+    if not validation_sample:
+        return None
+
+    states_0 = np.array([obs.prev_state for obs in validation_sample], dtype=np.float32)
+    states_1 = np.array([obs.next_state for obs in validation_sample], dtype=np.float32)
+    actions = np.array([[int(a) for a in obs.actions] for obs in validation_sample], dtype=np.int64)
+
+    actual_change = states_1 - states_0
+    predicted_change = world_model.predict_batch(states_0, actions)
+    residual = actual_change - predicted_change
+
+    mse_by_dim = np.mean(residual ** 2, axis=0)
+    snr_by_dim = []
+    for dim in range(CONTINUOUS_STATE_DIM):
+        signal = np.mean(actual_change[:, dim] ** 2)
+        noise = mse_by_dim[dim]
+        if noise == 0 or signal == 0:
+            snr_by_dim.append(0.0)
+        else:
+            snr_by_dim.append(10 * np.log10(signal / noise))
+
+    return {
+        'mse': float(np.mean(mse_by_dim)),
+        'mse_by_dim': mse_by_dim,
+        'snr_by_dim': np.array(snr_by_dim, dtype=np.float32),
+    }
 
 def _step_action(action, env, fuel):
     if action == 0:
@@ -40,7 +72,8 @@ def _step_action(action, env, fuel):
     if action != 0:
         fuel -= 1
     done = done or truncated
-    next_state = np.concatenate((next_state, [fuel / 1000.0]))
+    angle = next_state[4]
+    next_state = np.concatenate((next_state, [fuel / 1000.0, np.sin(angle), np.cos(angle)]))
 
     return next_state, done, fuel
 
@@ -52,6 +85,7 @@ def train(env, seconds, train_every_n_episodes, video_folder):
     # State shape is 8 from LunarLander-v3 plus fuel level
     replay_buffer = ReplayBuffer()
     replay_buffer0 = deque(maxlen=40000)
+    validation_sample = replay_buffer.sample(VALIDATION_SAMPLE_SIZE)
 
     # remove the videos folder
     shutil.rmtree(video_folder, ignore_errors=True)
@@ -70,13 +104,16 @@ def train(env, seconds, train_every_n_episodes, video_folder):
 
         prev_state, _ = env.reset()
         fuel = 1000
-        prev_state = np.concatenate((prev_state, [fuel / 1000.0]))
+        prev_state = np.concatenate((prev_state, [fuel / 1000.0, np.sin(prev_state[4]), np.cos(prev_state[4])]))
 
         do_training = train_every_n_episodes > 0 and episode % train_every_n_episodes == 0
 
         #########
         # Live testing loop start
         #########
+
+        episode_state_changes = []
+        episode_predicted_changes = []
 
         while not done and not truncated:
             t += 1
@@ -100,6 +137,9 @@ def train(env, seconds, train_every_n_episodes, video_folder):
 
             if np.isfinite(snr):
                 snr_list.append(snr)
+
+            episode_state_changes.append(state_change[:CONTINUOUS_STATE_DIM])
+            episode_predicted_changes.append(predicted_change[:CONTINUOUS_STATE_DIM])
 
             prev_state = next_state
         
@@ -132,30 +172,24 @@ def train(env, seconds, train_every_n_episodes, video_folder):
         # if it's time to train the model, do so
 
         if do_training:
-            # sample_len = len(replay_buffer0) * 8
             sample_len = 2 ** 10
             replay_buffer0 = list(replay_buffer0)
+            world_loss_values = []
+            world_parameter_loss_values = {}
             for k in range(32):
                 training_sample = replay_buffer.sample(sample_len) + replay_buffer0
-                world_model.train(training_sample)
+                world_metrics = world_model.train(training_sample)
                 actor_model.train(training_sample)
-
-            # validation_mse = _world_model_validation_mse(world_model, validation_sample)
-            # if validation_mse is not None:
-            #     print(f"[validation] Episode {episode}: fixed-sample world-model MSE={validation_mse:.6f}")
-            #     validation_mse_by_dim = _world_model_validation_mse_by_dim(world_model, validation_sample)
-            #     validation_contact_accuracy = _validation_contact_accuracy(world_model, validation_sample)
-            #     print(f"[validation] Episode {episode}: per-dim MSE: {_format_mse_by_dim(validation_mse_by_dim)}")
-            #     print(f"[validation] Episode {episode}: contact accuracy: left_leg={validation_contact_accuracy[0]:.4f}, right_leg={validation_contact_accuracy[1]:.4f}")
+                if world_metrics is not None:
+                    world_loss_values.append(world_metrics['loss'])
+                    for name, value in world_metrics['per_parameter_loss'].items():
+                        world_parameter_loss_values.setdefault(name, []).append(value)
 
             world_model.save()
             actor_model.save()
 
-            replay_buffer0 = deque(maxlen=40000)
-            # Autosave observations
             try:
                 replay_buffer.save()
-                print(f"[autosave] Saved {len(replay_buffer)} observations -> {replay_buffer.filename}")
             except Exception as e:
                 print(f"Autosave failed: {e}")
 
@@ -168,7 +202,6 @@ def main():
 
     np.set_printoptions(formatter={'float': lambda x: "{0:+0.4f}".format(x)})
 
-    # env = gym.make("LunarLander-v3", render_mode="rgb_array")
     env = gym.make("LunarLander-v3", continuous=True, render_mode="rgb_array")
     env = RecordVideo(env, video_folder="./videos", episode_trigger=lambda x: True, disable_logger=True)
 
