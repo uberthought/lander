@@ -9,8 +9,9 @@ def main():
     parser = argparse.ArgumentParser(description="Training for the LunarLander-v3 environment.")
     parser.add_argument("--seconds", type=int, default=60, help="Number of seconds to train")
     parser.add_argument('--sample-size', type=int, default=10, help='Number of samples for training')
-    seconds = parser.parse_args().seconds
-    sample_size = parser.parse_args().sample_size
+    args = parser.parse_args()
+    seconds = args.seconds
+    sample_size = args.sample_size
 
     np.set_printoptions(formatter={'float': lambda x: "{0:+0.4f}".format(x)})
 

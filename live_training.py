@@ -27,11 +27,12 @@ def _step_action(action, env, fuel):
         action0 = np.array([0.0, -1.0], dtype=np.float32)
     next_state, _, done, truncated, _ = env.step(action0)
     next_state = normalize_state(next_state)
-        fuel -= 1 if action != 0 else 0
+    if action != 0:
+        fuel -= 1
     done = done or truncated
     next_state = np.concatenate((next_state, [fuel / 1000.0]))
 
-        return next_state, done, fuel
+    return next_state, done, fuel
 
 def train(env, seconds, train_every_n_episodes, video_folder):
     world_model = WorldModel()
@@ -74,7 +75,7 @@ def train(env, seconds, train_every_n_episodes, video_folder):
             actions = actor_model.get_best_actions([prev_state])[0].tolist()
 
             for action in actions:
-                next_state, done = _step_action(action, env, fuel)
+                next_state, done, fuel = _step_action(action, env, fuel)
                 if done:
                     break
 
@@ -87,7 +88,7 @@ def train(env, seconds, train_every_n_episodes, video_folder):
             state_change = next_state - prev_state
             signal = np.mean(state_change ** 2)
             noise = np.mean((state_change - predicted_change) ** 2)
-                    next_state, done, fuel = _step_action(action, env, fuel)
+            if noise == 0 or signal == 0:
                 snr = 0.0
             else:
                 snr = 10 * np.log10(signal / noise)

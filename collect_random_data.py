@@ -24,8 +24,7 @@ def step_action(action, env, fuel):
     done = done or truncated
     next_state = np.concatenate((next_state, [fuel / 1000.0]))
 
-    return next_state, done
-
+    return next_state, done, fuel
 
 def collect(env, episodes, video_folder):
     replay_buffer = ReplayBuffer()
@@ -48,7 +47,7 @@ def collect(env, episodes, video_folder):
             actions = np.random.randint(0, POSSIBLE_ACTIONS, size=NUM_ACTIONS).tolist()
 
             for action in actions:
-                next_state, done = step_action(action, env, fuel)
+                next_state, done, fuel = step_action(action, env, fuel)
                 if done:
                     break
 
