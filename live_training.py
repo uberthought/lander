@@ -19,45 +19,14 @@ from configuration import NUM_ACTIONS, POSSIBLE_ACTIONS
 CONTINUOUS_STATE_DIM = 6
 VALIDATION_SAMPLE_SIZE = 2 ** 10
 
-def _compute_snr(state_change, predicted_change):
-    state_change = state_change[:CONTINUOUS_STATE_DIM]
-    predicted_change = predicted_change[:CONTINUOUS_STATE_DIM]
-    signal = np.mean(state_change ** 2)
-    noise = np.mean((state_change - predicted_change) ** 2)
+def _compute_snr(state, predicted):
+    state = state[:CONTINUOUS_STATE_DIM]
+    predicted = predicted[:CONTINUOUS_STATE_DIM]
+    signal = np.mean(state ** 2)
+    noise = np.mean((state - predicted) ** 2)
     if noise == 0 or signal == 0:
         return 0.0
     return 10 * np.log10(signal / noise)
-
-def _format_named_values(names, values):
-    return ", ".join(f"{name}={value:.6f}" for name, value in zip(names, values))
-
-def _world_model_validation_metrics(world_model, validation_sample):
-    if not validation_sample:
-        return None
-
-    states_0 = np.array([obs.prev_state for obs in validation_sample], dtype=np.float32)
-    states_1 = np.array([obs.next_state for obs in validation_sample], dtype=np.float32)
-    actions = np.array([[int(a) for a in obs.actions] for obs in validation_sample], dtype=np.int64)
-
-    actual_change = states_1 - states_0
-    predicted_change = world_model.predict_batch(states_0, actions)
-    residual = actual_change - predicted_change
-
-    mse_by_dim = np.mean(residual ** 2, axis=0)
-    snr_by_dim = []
-    for dim in range(CONTINUOUS_STATE_DIM):
-        signal = np.mean(actual_change[:, dim] ** 2)
-        noise = mse_by_dim[dim]
-        if noise == 0 or signal == 0:
-            snr_by_dim.append(0.0)
-        else:
-            snr_by_dim.append(10 * np.log10(signal / noise))
-
-    return {
-        'mse': float(np.mean(mse_by_dim)),
-        'mse_by_dim': mse_by_dim,
-        'snr_by_dim': np.array(snr_by_dim, dtype=np.float32),
-    }
 
 def _step_action(action, env, fuel):
     if action == 0:
@@ -112,9 +81,6 @@ def train(env, seconds, train_every_n_episodes, video_folder):
         # Live testing loop start
         #########
 
-        episode_state_changes = []
-        episode_predicted_changes = []
-
         while not done and not truncated:
             t += 1
             # actions = np.random.randint(0, POSSIBLE_ACTIONS, size=NUM_ACTIONS).tolist()
@@ -137,9 +103,6 @@ def train(env, seconds, train_every_n_episodes, video_folder):
 
             if np.isfinite(snr):
                 snr_list.append(snr)
-
-            episode_state_changes.append(state_change[:CONTINUOUS_STATE_DIM])
-            episode_predicted_changes.append(predicted_change[:CONTINUOUS_STATE_DIM])
 
             prev_state = next_state
         

@@ -3,9 +3,6 @@ import numpy as np
 from collections import namedtuple
 import torch
 
-# Make normalization factors available at module level
-NORMALIZATION_FACTORS = np.array([1, 1.75, 4, 4, 3.1415927, 5, 1, 1, 1, 1, 1], dtype=np.float32)
-# indices 9,10 are sin(angle) and cos(angle), already in [-1,1] so norm factor = 1
 
 def calculate_reward(obs):
     # Normalize observations using the module-level NORMALIZATION_FACTORS
@@ -13,6 +10,9 @@ def calculate_reward(obs):
     if not isinstance(obs, torch.Tensor):
         obs = torch.tensor(obs, dtype=torch.float32)
 
+    # Make normalization factors available at module level
+    NORMALIZATION_FACTORS = np.array([1, 1.75, 4, 4, 3.1415927, 5, 1, 1, 1, 1, 1], dtype=np.float32)
+    # indices 9,10 are sin(angle) and cos(angle), already in [-1,1] so norm factor = 1
     norm = torch.tensor(NORMALIZATION_FACTORS, dtype=obs.dtype, device=obs.device)
     obs_norm = obs / norm
 

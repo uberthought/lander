@@ -1,4 +1,3 @@
-from observation import NORMALIZATION_FACTORS
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -7,7 +6,7 @@ import numpy as np
 import os
 import tempfile
 
-from configuration import STATE_SIZE, POSSIBLE_ACTIONS, NUM_ACTIONS, LAYER_COUNT, NODE_COUNT, WORLD_LOSS_DELTA, WORLD_LOSS_WEIGHTS
+from configuration import STATE_SIZE, POSSIBLE_ACTIONS, NUM_ACTIONS, LAYER_COUNT, NODE_COUNT, WORLD_LOSS_DELTA
 
 STATE_PARAMETER_NAMES = ["x", "y", "vx", "vy", "angle", "vangle", "left_leg", "right_leg", "fuel", "sin_angle", "cos_angle"]
 
@@ -15,6 +14,8 @@ STATE_PARAMETER_NAMES = ["x", "y", "vx", "vy", "angle", "vangle", "left_leg", "r
 class SkipBlock(nn.Module):
     def __init__(self, nodes):
         super().__init__()
+        self.block0 = nn.Linear(nodes, nodes)
+        self.relu0 = nn.LeakyReLU()
         self.block1 = nn.Linear(nodes, nodes)
         self.relu1 = nn.LeakyReLU()
         self.block2 = nn.Linear(nodes, nodes)
@@ -23,6 +24,8 @@ class SkipBlock(nn.Module):
     def forward(self, input):
         s = input
         x = input
+        x = self.block0(x)
+        x = self.relu0(x)
         x = self.block1(x)
         x = self.relu1(x)
         x = self.block2(x)
@@ -43,8 +46,11 @@ class WorldNet(nn.Module):
 
         self.input = nn.Linear(self.input_dim, nodes)
         self.skip_layers = nn.ModuleList([SkipBlock(nodes) for _ in range(layers)])
-        self.output = nn.Linear(nodes, output_dim)
-
+        self.output = nn.Sequential(
+                    nn.Linear(nodes, nodes),
+                    nn.LeakyReLU(),
+                    nn.Linear(nodes, output_dim)
+                )
     def forward(self, state, action):
         x = torch.cat([state, action], dim=-1)
         x = self.input(x)
@@ -69,8 +75,6 @@ class WorldModel:
         self.model = WorldNet(net_input_dim, self.nodes, self.layers, self.input_dim)
         self.optimizer = optim.AdamW(self.model.parameters(), lr=0.001)
         self.criterion = nn.HuberLoss(delta=WORLD_LOSS_DELTA, reduction='none')
-        self.loss_weights = torch.tensor(WORLD_LOSS_WEIGHTS, dtype=torch.float32, device=self.device)
-        self.loss_weight_mean = self.loss_weights.mean()
 
         if os.path.exists(self.model_path):
             # checkpoint = torch.load(self.model_path, map_location="cpu")
@@ -98,8 +102,8 @@ class WorldModel:
         actions = torch.tensor(np.array([[int(a) for a in obs.actions] for obs in observations]), dtype=torch.long, device=self.device)
         states_0_np = np.array([obs.prev_state for obs in observations], dtype=np.float32)
         states_1_np = np.array([obs.next_state for obs in observations], dtype=np.float32)
-        states_0 = torch.tensor(states_0_np / NORMALIZATION_FACTORS, dtype=torch.float32, device=self.device)
-        states_1 = torch.tensor(states_1_np / NORMALIZATION_FACTORS, dtype=torch.float32, device=self.device)
+        states_0 = torch.tensor(states_0_np, dtype=torch.float32, device=self.device)
+        states_1 = torch.tensor(states_1_np, dtype=torch.float32, device=self.device)
         delta = states_1 - states_0
 
         actions_hot = F.one_hot(actions, num_classes=self.possible_actions).float()
@@ -108,12 +112,11 @@ class WorldModel:
         self.optimizer.zero_grad()
         outputs = self.model(states_0, actions_hot)
         losses = self.criterion(outputs, delta)
-        weighted_losses = losses * self.loss_weights.view(1, -1)
-        loss = weighted_losses.mean() / self.loss_weight_mean
+        loss = losses.mean()
         loss.backward()
         self.optimizer.step()
 
-        per_parameter_loss = (losses.mean(dim=0).detach().cpu().numpy()) * (NORMALIZATION_FACTORS ** 2)
+        per_parameter_loss = (losses.mean(dim=0).detach().cpu().numpy())
         return {
             'loss': loss.item(),
             'per_parameter_loss': dict(zip(STATE_PARAMETER_NAMES, per_parameter_loss.tolist()))
@@ -145,13 +148,12 @@ class WorldModel:
         self.model.eval()
         with torch.no_grad():
             states_np = np.array(states, dtype=np.float32)
-            state_tensor = torch.tensor(states_np / NORMALIZATION_FACTORS, dtype=torch.float32, device=self.device)
+            state_tensor = torch.tensor(states_np, dtype=torch.float32, device=self.device)
             actions_tensor = torch.tensor(np.array(actions), dtype=torch.long, device=self.device)
             actions_hot = F.one_hot(actions_tensor, num_classes=self.possible_actions).float()
             actions_hot = actions_hot.view(actions_hot.size(0), -1)
-            delta_norm = self.model(state_tensor, actions_hot).cpu().numpy()
-        # Denormalize output delta
-        return delta_norm * NORMALIZATION_FACTORS
+            result = self.model(state_tensor, actions_hot).cpu().numpy()
+        return result
 
     def predict(self, state, actions):
         return self.predict_batch([state], [actions])[0]
