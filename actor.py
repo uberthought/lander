@@ -64,7 +64,9 @@ class ActorModel:
         self.model = ActorNet(net_input_dim, self.nodes, self.layers, 1)
         if os.path.exists(self.model_path):
             self.model.load_state_dict(torch.load(self.model_path, map_location="cpu"))
-        
+            print(f"Loaded model weights from {self.model_path}")
+        else:
+            print(f"No checkpoint found at {self.model_path}; starting with random weights.")
         self.model.to(self.device)
         
         self.optimizer = optim.AdamW(self.model.parameters())

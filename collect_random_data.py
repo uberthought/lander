@@ -5,8 +5,20 @@ import shutil
 import argparse
 from observation import create_observation
 from ReplayBuffer import ReplayBuffer
+from world import WorldModel
 
 from configuration import NUM_ACTIONS, POSSIBLE_ACTIONS
+
+CONTINUOUS_STATE_DIM = 6
+
+def _compute_snr(state_change, predicted_change):
+    state_change = state_change[:CONTINUOUS_STATE_DIM]
+    predicted_change = predicted_change[:CONTINUOUS_STATE_DIM]
+    signal = np.mean(state_change ** 2)
+    noise = np.mean((state_change - predicted_change) ** 2)
+    if noise == 0 or signal == 0:
+        return 0.0
+    return 10 * np.log10(signal / noise)
 
 def step_action(action, env, fuel):
     if action == 0:
@@ -28,6 +40,7 @@ def step_action(action, env, fuel):
 
 def collect(env, episodes, video_folder):
     replay_buffer = ReplayBuffer()
+    world_model = WorldModel()
     shutil.rmtree(video_folder, ignore_errors=True)
     os.makedirs(video_folder, exist_ok=True)
 
@@ -39,6 +52,7 @@ def collect(env, episodes, video_folder):
         prev_state, _ = env.reset()
         fuel = 1000
         prev_state = np.concatenate((prev_state, [fuel / 1000.0, np.sin(prev_state[4]), np.cos(prev_state[4])]))
+        snr_list = []
 
         while not done and not truncated:
             t += 1
@@ -50,9 +64,18 @@ def collect(env, episodes, video_folder):
                 if done:
                     break
 
+            predicted_change = world_model.predict(prev_state, actions)
+            state_change = next_state - prev_state
+            snr = _compute_snr(state_change, predicted_change)
+            if np.isfinite(snr):
+                snr_list.append(snr)
+
             transition = create_observation(episode, t, prev_state, actions, next_state, done)
             replay_buffer.add(transition)
             prev_state = next_state
+
+        median_snr = np.median(snr_list) if snr_list else 0.0
+        print(f"Episode {episode+1} ended after {t} timesteps with median SNR={median_snr: 8.4f} dB")
     try:
         replay_buffer.save()
         print(f"[autosave] Saved {len(replay_buffer)} observations -> {replay_buffer.filename}")

@@ -67,15 +67,27 @@ class WorldModel:
 
         net_input_dim = self.input_dim + self.num_actions * self.possible_actions
         self.model = WorldNet(net_input_dim, self.nodes, self.layers, self.input_dim)
-        if os.path.exists(self.model_path):
-            self.model.load_state_dict(torch.load(self.model_path, map_location="cpu"))
-
-        self.model.to(self.device)
-
-        self.optimizer = optim.AdamW(self.model.parameters())
+        self.optimizer = optim.AdamW(self.model.parameters(), lr=0.001)
         self.criterion = nn.HuberLoss(delta=WORLD_LOSS_DELTA, reduction='none')
         self.loss_weights = torch.tensor(WORLD_LOSS_WEIGHTS, dtype=torch.float32, device=self.device)
         self.loss_weight_mean = self.loss_weights.mean()
+
+        if os.path.exists(self.model_path):
+            # checkpoint = torch.load(self.model_path, map_location="cpu")
+            checkpoint = torch.load(self.model_path, map_location="mps" if torch.backends.mps.is_available() else "cpu")
+            if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint and 'optimizer_state_dict' in checkpoint:
+                self.model.load_state_dict(checkpoint['model_state_dict'])
+                self.model.to(self.device)
+                self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+                print(f"Loaded model and optimizer state from {self.model_path}")
+            else:
+                # Backward compatibility: support old format (just state_dict)
+                self.model.load_state_dict(checkpoint)
+                self.model.to(self.device)
+                print(f"Loaded model weights from {self.model_path} (no optimizer state)")
+        else:
+            print(f"No checkpoint found at {self.model_path}; starting with random weights.")
+            self.model.to(self.device)
 
     def train(self, observations):
         if not observations:
@@ -112,7 +124,10 @@ class WorldModel:
         os.close(fd1)
 
         try:
-            torch.save(self.model.state_dict(), tmp_path)
+            torch.save({
+                'model_state_dict': self.model.state_dict(),
+                'optimizer_state_dict': self.optimizer.state_dict(),
+            }, tmp_path)
             os.replace(tmp_path, self.model_path)
 
         except KeyboardInterrupt:
