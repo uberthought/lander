@@ -114,4 +114,5 @@ class ActorModel:
         with torch.no_grad():
             logits = self.model(state_tensor)
 
-        return torch.argmax(logits, dim=1).item()
+        probs = F.softmax(logits, dim=1)
+        return torch.multinomial(probs, num_samples=1).item()
