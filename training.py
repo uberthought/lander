@@ -32,8 +32,8 @@ def main():
     np.set_printoptions(formatter={'float': lambda x: "{0:+0.4f}".format(x)})
 
     replay_buffer = ReplayBuffer()
-    actor_model = ActorModel()
     world_model = WorldModel()
+    actor_model = ActorModel(world_model)
 
     import time
     start_time = time.time()

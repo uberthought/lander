@@ -49,7 +49,7 @@ def _step_action(action, env, fuel):
 
 def train(env, seconds, train_every_n_episodes, video_folder):
     world_model = WorldModel()
-    actor_model = ActorModel()
+    actor_model = ActorModel(world_model)
 
     # Main long-term buffer (persistent) and recent buffer for on-policy-ish updates
     # State shape is 8 from LunarLander-v3 plus fuel level
@@ -84,19 +84,14 @@ def train(env, seconds, train_every_n_episodes, video_folder):
 
         while not done and not truncated:
             t += 1
-            actions = actor_model.get_best_actions([prev_state])[0].tolist()
+            action = actor_model.get_best_action(prev_state)
+            next_state, done, fuel = _step_action(action, env, fuel)
 
-            for action in actions:
-                next_state, done, fuel = _step_action(action, env, fuel)
+            legs = next_state[6:8]
+            if legs[0] == 1 and legs[1] == 1:
+                done = True
 
-                legs = next_state[6:8]
-                if legs[0] == 1 and legs[1] == 1:
-                    done = True
-
-                if done:
-                    break
-
-            transition = create_observation(episode, t, prev_state, actions, next_state, done)
+            transition = create_observation(episode, t, prev_state, [action], next_state, done)
             replay_buffer.add(transition)
             replay_buffer0.append(transition)
 
