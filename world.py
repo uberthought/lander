@@ -32,18 +32,19 @@ class SkipBlock(nn.Module):
 # input is the current state plus the action one-hot encoded
 # output is the predicted next-state delta
 class WorldNet(nn.Module):
-    def __init__(self, input_dim, nodes, layers, output_dim):
+    def __init__(self, state_dim, action_dim, nodes, layers, output_dim):
         super().__init__()
-        self.input_dim = input_dim
-        self.nodes = nodes
         self.layers = layers
 
-        self.input = nn.Linear(self.input_dim, nodes)
+        self.state_input = nn.Linear(state_dim, nodes)
+        self.action_input = nn.Linear(action_dim, nodes)
         self.skip_layers = nn.ModuleList([SkipBlock(nodes) for _ in range(layers)])
         self.output = nn.Linear(nodes, output_dim)
+
     def forward(self, state, action):
-        x = torch.cat([state, action], dim=-1)
-        x = self.input(x)
+        x = self.state_input(state)
+        y = self.action_input(action)
+        x = x + y
         for i in range(self.layers):
             x = self.skip_layers[i](x)
         x = self.output(x)
@@ -53,15 +54,11 @@ class WorldNet(nn.Module):
 class WorldModel:
     def __init__(self, model_path="models/world_model.pt"):
         self.model_path = model_path
-        self.input_dim = STATE_SIZE
         self.possible_actions = POSSIBLE_ACTIONS
-        self.nodes = NODE_COUNT
-        self.layers = LAYER_COUNT
 
         self.device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 
-        net_input_dim = self.input_dim + self.possible_actions
-        self.model = WorldNet(net_input_dim, self.nodes, self.layers, self.input_dim)
+        self.model = WorldNet(STATE_SIZE, self.possible_actions, NODE_COUNT, LAYER_COUNT, STATE_SIZE)
         self.optimizer = optim.AdamW(self.model.parameters(), lr=0.001)
         self.criterion = nn.HuberLoss(delta=WORLD_LOSS_DELTA, reduction='none')
 

@@ -32,7 +32,6 @@ class SkipBlock(nn.Module):
 class ActorNet(nn.Module):
     def __init__(self, state_dim, action_dim, nodes, layers, output_dim):
         super().__init__()
-        self.nodes = nodes
         self.layers = layers
 
         self.state_input = nn.Linear(state_dim, nodes)
@@ -53,15 +52,12 @@ class ActorNet(nn.Module):
 class ActorModel:
     def __init__(self, model_path="models/actor_model.pt"):
         self.model_path = model_path
-        self.input_dim = STATE_SIZE
         self.possible_actions = POSSIBLE_ACTIONS
-        self.nodes = NODE_COUNT
-        self.layers = LAYER_COUNT
         self.discount_factor = 0.95
 
         self.device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
         
-        self.model = ActorNet(self.input_dim, self.possible_actions, self.nodes, self.layers, 1)
+        self.model = ActorNet(STATE_SIZE, POSSIBLE_ACTIONS, NODE_COUNT, LAYER_COUNT, 1)
         if os.path.exists(self.model_path):
             self.model.load_state_dict(torch.load(self.model_path, map_location="cpu"))
             print(f"Loaded model weights from {self.model_path}")
@@ -133,9 +129,10 @@ class ActorModel:
         with torch.no_grad():
             predicted_rewards = self.model(state_expanded, actions_1_onehot)
         predicted_rewards = predicted_rewards.view(state_tensor.size(0), self.possible_actions)
-        print(predicted_rewards.cpu().numpy())
 
         probs = F.softmax(predicted_rewards, dim=1)
+        probs = probs * 25
+        probs = F.softmax(probs, dim=1)
         best_action_index = torch.multinomial(probs, num_samples=1).squeeze(1)
         best_action = actions_1[best_action_index]
 
