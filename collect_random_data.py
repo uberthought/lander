@@ -5,7 +5,6 @@ import shutil
 import argparse
 from observation import create_observation
 from ReplayBuffer import ReplayBuffer
-from world import WorldModel
 
 from configuration import NUM_ACTIONS, POSSIBLE_ACTIONS
 
@@ -29,7 +28,6 @@ def step_action(action, env, fuel):
 
 def collect(env, episodes, video_folder):
     replay_buffer = ReplayBuffer()
-    world_model = WorldModel()
     shutil.rmtree(video_folder, ignore_errors=True)
     os.makedirs(video_folder, exist_ok=True)
 
@@ -52,8 +50,6 @@ def collect(env, episodes, video_folder):
                 if done:
                     break
 
-            predicted_next_state = world_model.predict(prev_state, actions)
-            
             transition = create_observation(episode, t, prev_state, actions, next_state, done)
             replay_buffer.add(transition)
             prev_state = next_state
