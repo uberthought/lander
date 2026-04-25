@@ -6,7 +6,7 @@ import numpy as np
 import os
 import tempfile
 
-from configuration import STATE_SIZE, POSSIBLE_ACTIONS, LAYER_COUNT, NODE_COUNT
+from configuration import POSSIBLE_ACTIONS, LAYER_COUNT, NODE_COUNT
 from observation import calculate_reward
 
 class SkipBlock(nn.Module):
@@ -30,17 +30,19 @@ class SkipBlock(nn.Module):
 # input is the current state and a list of actions (one-hot encoded)
 # output is the predicted reward for the given state and action
 class ActorNet(nn.Module):
-    def __init__(self, state_dim, action_dim, nodes, layers, output_dim):
+    def __init__(self, action_dim, nodes, layers, output_dim):
         super().__init__()
         self.layers = layers
 
-        self.state_input = nn.Linear(state_dim, nodes)
+        self.sensor_input = nn.Linear(6, nodes)
+        self.legs_input = nn.Linear(2, nodes)
+        self.done_input = nn.Linear(1, nodes)
         self.action_input = nn.Linear(action_dim, nodes)
         self.skip_layers = nn.ModuleList([SkipBlock(nodes) for _ in range(layers)])
         self.output = nn.Linear(nodes, output_dim)
 
     def forward(self, state, action):
-        x = self.state_input(state)
+        x = self.sensor_input(state[..., :6]) + self.legs_input(state[..., 6:8]) + self.done_input(state[..., 8:9])
         y = self.action_input(action)
         x = x + y
         for i in range(self.layers):
@@ -57,7 +59,7 @@ class ActorModel:
 
         self.device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
         
-        self.model = ActorNet(STATE_SIZE, POSSIBLE_ACTIONS, NODE_COUNT, LAYER_COUNT, 1)
+        self.model = ActorNet(POSSIBLE_ACTIONS, NODE_COUNT, LAYER_COUNT, 1)
         if os.path.exists(self.model_path):
             self.model.load_state_dict(torch.load(self.model_path, map_location="cpu"))
             print(f"Loaded model weights from {self.model_path}")
