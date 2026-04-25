@@ -96,9 +96,8 @@ class ActorModel:
         
         # actions_1 needs to be a tensor of possible actions, so for example
         # if possible_actions=4 and num_actions=2 it should be [0,0], [0,1], [0,2], [0,3], [1,0], [1,1], ... [3,3]
-        grids = torch.meshgrid(*[torch.arange(self.possible_actions, device=self.device) for _ in range(1)], indexing='ij')
-        actions_1 = torch.stack(grids, dim=-1).reshape(-1, 1)  # shape: (possible_actions, 1)
- 
+        actions_1 = torch.arange(self.possible_actions, device=self.device).unsqueeze(-1)
+
         actions_1_onehot = F.one_hot(actions_1, num_classes=self.possible_actions).unsqueeze(0)
         actions_1_onehot = actions_1_onehot.view(-1, self.possible_actions)
         actions_1_onehot = actions_1_onehot.repeat(states_1.size(0), 1, 1)
@@ -155,8 +154,7 @@ class ActorModel:
         
         states_tensor = torch.tensor(np.array(states), dtype=torch.float32, device=self.device)
         
-        grids = torch.meshgrid(*[torch.arange(self.possible_actions, device=self.device) for _ in range(1)], indexing='ij')
-        actions_1 = torch.stack(grids, dim=-1).reshape(-1, 1)  # shape: (possible_actions, 1)
+        actions_1 = torch.arange(self.possible_actions, device=self.device).unsqueeze(-1)
         actions_1_onehot = F.one_hot(actions_1, num_classes=self.possible_actions).unsqueeze(0)
         actions_1_onehot = actions_1_onehot.view(-1, self.possible_actions)
 
