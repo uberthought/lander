@@ -9,12 +9,11 @@ def compute_validation_snr(world_model, validation_sample):
     states_0 = np.array([obs.prev_state for obs in validation_sample], dtype=np.float32)
     states_1 = np.array([obs.next_state for obs in validation_sample], dtype=np.float32)
     actions = np.array([int(obs.action) for obs in validation_sample], dtype=np.int64)
-    actual_change = states_1 - states_0
-    predicted_change = world_model.predict_batch(states_0, actions)
+    predicted_next = world_model.predict_batch(states_0, actions)
     snr_by_dim = []
     for dim in range(states_0.shape[1]):
-        signal = np.mean(actual_change[:, dim] ** 2)
-        noise = np.mean((actual_change[:, dim] - predicted_change[:, dim]) ** 2)
+        signal = np.mean(states_1[:, dim] ** 2)
+        noise = np.mean((states_1[:, dim] - predicted_next[:, dim]) ** 2)
         snr = 0.0 if noise == 0 or signal == 0 else 10 * np.log10(signal / noise)
         snr_by_dim.append(snr)
     return np.array(snr_by_dim, dtype=np.float32)
@@ -22,7 +21,7 @@ def compute_validation_snr(world_model, validation_sample):
 def main():
     parser = argparse.ArgumentParser(description="Training for the LunarLander-v3 environment.")
     parser.add_argument("--seconds", type=int, default=60, help="Number of seconds to train")
-    parser.add_argument('--sample-size', type=int, default=10, help='Number of samples for training')
+    parser.add_argument('--sample-size', type=int, default=16, help='Number of samples for training')
     args = parser.parse_args()
     seconds = args.seconds
     sample_size = args.sample_size

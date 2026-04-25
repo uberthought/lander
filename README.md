@@ -9,12 +9,12 @@ Episode 100 ended after 60 timesteps with median SNR=  3.9036 dB, std=  5.5520 d
 Here’s what each part means:
 
 - **Episode 100 ended after 60 timesteps**: The agent completed episode 100, which lasted 60 steps (actions taken in the environment).
-- **median SNR=  3.9036 dB**: The median Signal-to-Noise Ratio (SNR) for the episode. SNR measures how well the world model predicts actual state changes:
+- **median SNR=  3.9036 dB**: The median Signal-to-Noise Ratio (SNR) for the episode. SNR measures how well the world model predicts the next state:
    - Higher SNR = model predictions are closer to reality (less noise/error).
    - Lower SNR = predictions are less accurate.
 - **std=  5.5520 dB**: The standard deviation of SNR values during the episode, indicating how much the SNR varied from step to step.
 
-In summary: Each line reports how long the episode lasted and how well (and consistently) the world model predicted state changes during that episode.
+In summary: Each line reports how long the episode lasted and how well (and consistently) the world model predicted the next state during that episode.
 # LunarLander-v3 Deep RL Project
 
 This repository implements a deep reinforcement learning (RL) agent for the LunarLander-v3 environment (continuous mode) using PyTorch. It features a custom replay buffer, actor and world models, and supports both offline and live training.

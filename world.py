@@ -30,7 +30,7 @@ class SkipBlock(nn.Module):
 
 # PyTorch World Model
 # input is the current state plus the action one-hot encoded
-# output is the predicted next-state delta
+# output is the predicted next state
 class WorldNet(nn.Module):
     def __init__(self, input_dim, nodes, layers, output_dim):
         super().__init__()
@@ -46,7 +46,7 @@ class WorldNet(nn.Module):
         x = self.input(x)
         for i in range(self.layers):
             x = self.skip_layers[i](x)
-        x = self.output(x)
+        x = self.output(x) + state
         return x
 
 
@@ -93,16 +93,15 @@ class WorldModel:
         states_1_np = np.array([obs.next_state for obs in observations], dtype=np.float32)
         states_0 = torch.tensor(states_0_np, dtype=torch.float32, device=self.device)
         states_1 = torch.tensor(states_1_np, dtype=torch.float32, device=self.device)
-        delta = states_1 - states_0
 
         actions_hot = F.one_hot(actions, num_classes=self.possible_actions).float()
 
         self.optimizer.zero_grad()
         outputs = self.model(states_0, actions_hot)
 
-        losses = self.criterion(outputs, delta)
-        delta_std = delta.var(dim=0).clamp(min=1e-6).sqrt()
-        weights = (1.0 / delta_std)
+        losses = self.criterion(outputs, states_1)
+        states_1_std = states_1.var(dim=0).clamp(min=1e-6).sqrt()
+        weights = (1.0 / states_1_std)
         weights = weights / weights.mean()
         loss = (losses * weights).mean()
         loss.backward()

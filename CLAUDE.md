@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Deep Reinforcement Learning agent for the **LunarLander-v3** Gymnasium environment. Two neural networks are trained in tandem:
 - **Actor Model** (`actor.py`) — predicts Q-values (expected rewards) for each of 16 possible action combinations
-- **World Model** (`world.py`) — predicts next-state deltas given current state + action
+- **World Model** (`world.py`) — predicts next state given current state + action
 
 ## Common Commands
 

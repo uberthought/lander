@@ -84,8 +84,7 @@ class ActorModel:
             states_tiled = states_all.unsqueeze(1).repeat(1, A, 1).view(B * A, -1)
             actions_all = torch.arange(A, device=self.device)
             actions_onehot_tiled = F.one_hot(actions_all, num_classes=A).float().unsqueeze(0).repeat(B, 1, 1).view(B * A, -1)
-            deltas = self.world_model.model(states_tiled, actions_onehot_tiled)
-            predicted_next_states = states_tiled + deltas
+            predicted_next_states = self.world_model.model(states_tiled, actions_onehot_tiled)
             predicted_rewards = calculate_reward(predicted_next_states).view(B, A)
             target_actions = torch.argmax(predicted_rewards, dim=1)
 

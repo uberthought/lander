@@ -20,7 +20,7 @@ This file provides essential guidance for AI coding agents working in this codeb
 ## Architecture Overview
 
 - **ActorModel ([actor.py](actor.py))**: Predicts Q-values for all 2-action combinations using a skip-block neural net.
-- **WorldModel ([world.py](world.py))**: Predicts next-state deltas given state and action.
+- **WorldModel ([world.py](world.py))**: Predicts next state given state and action.
 - **ReplayBuffer ([ReplayBuffer.py](ReplayBuffer.py))**: Memory-mapped, atomic, circular buffer for experience replay.
 - **Data Flow:**
   1. `collect_random_data.py` → ReplayBuffer
