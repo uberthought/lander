@@ -59,7 +59,7 @@ def train(seconds, rollout_steps):
     np.set_printoptions(formatter={'float': lambda x: f"{x:+0.4f}"})
 
     world_model = WorldModel()
-    actor_model = ActorModel(world_model)
+    actor_model = ActorModel()
     replay_buffer = ReplayBuffer()
 
     if len(replay_buffer) == 0:

@@ -46,7 +46,7 @@ def _step_action(action, env):
 
 def train(env, seconds, train_every_n_episodes, video_folder):
     world_model = WorldModel()
-    actor_model = ActorModel(world_model)
+    actor_model = ActorModel()
 
     # Main long-term buffer (persistent) and recent buffer for on-policy-ish updates
     replay_buffer = ReplayBuffer()

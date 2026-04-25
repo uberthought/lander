@@ -41,7 +41,7 @@ def main():
 
     replay_buffer = ReplayBuffer()
     world_model = WorldModel()
-    actor_model = ActorModel(world_model)
+    actor_model = ActorModel()
 
     import time
     start_time = time.time()
