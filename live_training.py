@@ -11,7 +11,7 @@ from observation import create_observation
 from ReplayBuffer import ReplayBuffer
 from world import WorldModel
 from actor import ActorModel
-from training import compute_validation_snr
+from training import print_snr
 
 import time
 
@@ -29,7 +29,7 @@ def _compute_snr(state, predicted):
         return 0.0
     return 10 * np.log10(signal / noise)
 
-def _step_action(action, env, fuel):
+def _step_action(action, env):
     if action == 0:
         action0 = np.array([0.0, 0.0], dtype=np.float32)
     elif action == 1:
@@ -39,19 +39,16 @@ def _step_action(action, env, fuel):
     elif action == 3:
         action0 = np.array([0.0, -1.0], dtype=np.float32)
     next_state, _, done, truncated, _ = env.step(action0)
-    if action != 0:
-        fuel -= 1
     done = done or truncated
-    next_state = np.concatenate((next_state, [fuel / 1000.0, float(done)]))
+    next_state = np.concatenate((next_state, [float(done)]))
 
-    return next_state, done, fuel
+    return next_state, done
 
 def train(env, seconds, train_every_n_episodes, video_folder):
     world_model = WorldModel()
     actor_model = ActorModel(world_model)
 
     # Main long-term buffer (persistent) and recent buffer for on-policy-ish updates
-    # State shape is 8 from LunarLander-v3 plus fuel level
     replay_buffer = ReplayBuffer()
     replay_buffer0 = deque(maxlen=40000)
     validation_sample = replay_buffer.sample(VALIDATION_SAMPLE_SIZE)
@@ -63,7 +60,6 @@ def train(env, seconds, train_every_n_episodes, video_folder):
 
     start_time = time.time()
     episode = 0
-    snr_list = []
     while time.time() - start_time < seconds:
         replay_buffer.increment_episode()
         episode += 1
@@ -72,8 +68,7 @@ def train(env, seconds, train_every_n_episodes, video_folder):
         t = 0
 
         prev_state, _ = env.reset()
-        fuel = 1000
-        prev_state = np.concatenate((prev_state, [fuel / 1000.0, 0.0]))
+        prev_state = np.concatenate((prev_state, [0.0]))
 
         do_training = train_every_n_episodes > 0 and episode % train_every_n_episodes == 0
 
@@ -84,7 +79,7 @@ def train(env, seconds, train_every_n_episodes, video_folder):
         while not done and not truncated:
             t += 1
             action = actor_model.get_best_action(prev_state)
-            next_state, done, fuel = _step_action(action, env, fuel)
+            next_state, done = _step_action(action, env)
 
             legs = next_state[6:8]
             if legs[0] == 1 and legs[1] == 1:
@@ -120,6 +115,8 @@ def train(env, seconds, train_every_n_episodes, video_folder):
         # if it's time to train the model, do so
 
         if do_training:
+            print_snr(world_model, replay_buffer0)
+
             replay_buffer0 = list(replay_buffer0)
             sample_len = len(replay_buffer0) * 4
 
@@ -138,11 +135,9 @@ def train(env, seconds, train_every_n_episodes, video_folder):
                 replay_buffer.save()
             except Exception as e:
                 print(f"Autosave failed: {e}")
+            
+            replay_buffer0 = deque(maxlen=40000)
 
-        snr_by_dim_b = compute_validation_snr(world_model, replay_buffer0)
-        short_names = ['x','y','vx','vy','a','va','ll','rl','fuel','done']
-        per_dim = ','.join(f"{n}:{v:.1f}" for n, v in zip(short_names, snr_by_dim_b))
-        print(f"SNR={np.mean(snr_by_dim_b):.1f} [{per_dim}]")
 
 
 def main():

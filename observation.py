@@ -11,8 +11,8 @@ def calculate_reward(obs):
         obs = torch.tensor(obs, dtype=torch.float32)
 
     # Make normalization factors available at module level
-    NORMALIZATION_FACTORS = np.array([1, 1.75, 4, 4, 3.1415927, 5, 1, 1, 1, 1], dtype=np.float32)
-    # index 8 is fuel/1000, index 9 is done (0 or 1)
+    NORMALIZATION_FACTORS = np.array([1, 1.75, 4, 4, 3.1415927, 5, 1, 1, 1], dtype=np.float32)
+    # index 8 is done (0 or 1)
     norm = torch.tensor(NORMALIZATION_FACTORS, dtype=obs.dtype, device=obs.device)
     obs_norm = obs / norm
 
@@ -21,8 +21,7 @@ def calculate_reward(obs):
     sensors = torch.clamp(sensors, 0, 1)
     sensors = 1.0 - sensors
 
-    # fuel_reward = obs_norm[:, 8:9]
-    # sensors = torch.cat([sensors, fuel_reward], dim=1)
+
     # reward = torch.norm(sensors, dim=1) / np.sqrt(7.0)
 
     reward = torch.norm(sensors[:, [0, 1, 4]], dim=1) / np.sqrt(3.0)

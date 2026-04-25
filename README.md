@@ -71,7 +71,7 @@ python3 test_ReplayBuffer.py
 ```
 
 ## Architecture
-- **State**: 9-dimensional vector (8 base + fuel fraction)
+- **State**: 9-dimensional vector (8 base + done)
 - **Actions**: 2 simultaneous, 4 options each (16 combos, one-hot encoded)
 - **Neural Net**: 4 skip blocks, 64 nodes/layer, LeakyReLU, AdamW, MSELoss
 - **Persistence**: Atomic file saves for buffer and metadata

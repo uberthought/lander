@@ -8,7 +8,7 @@ from ReplayBuffer import ReplayBuffer
 
 from configuration import POSSIBLE_ACTIONS
 
-def step_action(action, env, fuel):
+def step_action(action, env):
     if action == 0:
         action0 = np.array([0.0, 0.0], dtype=np.float32)
     elif action == 1:
@@ -18,12 +18,10 @@ def step_action(action, env, fuel):
     elif action == 3:
         action0 = np.array([0.0, -1.0], dtype=np.float32)
     next_state, _, done, truncated, _ = env.step(action0)
-    if action != 0:
-        fuel -= 1
     done = done or truncated
-    next_state = np.concatenate((next_state, [fuel / 1000.0, float(done)]))
+    next_state = np.concatenate((next_state, [float(done)]))
 
-    return next_state, done, fuel
+    return next_state, done
 
 def collect(env, episodes, video_folder):
     replay_buffer = ReplayBuffer()
@@ -35,12 +33,11 @@ def collect(env, episodes, video_folder):
         done = False
         truncated = False
         prev_state, _ = env.reset()
-        fuel = 1000
-        prev_state = np.concatenate((prev_state, [fuel / 1000.0, 0.0]))
+        prev_state = np.concatenate((prev_state, [0.0]))
 
         while not done and not truncated:
             action = np.random.randint(0, POSSIBLE_ACTIONS)
-            next_state, done, fuel = step_action(action, env, fuel)
+            next_state, done = step_action(action, env)
 
             transition = create_observation(prev_state, action, next_state)
             replay_buffer.add(transition)

@@ -66,7 +66,6 @@ class WorldModel:
         self.criterion = nn.HuberLoss(delta=WORLD_LOSS_DELTA, reduction='none')
 
         if os.path.exists(self.model_path):
-            # checkpoint = torch.load(self.model_path, map_location="cpu")
             checkpoint = torch.load(self.model_path, map_location="mps" if torch.backends.mps.is_available() else "cpu")
             if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint and 'optimizer_state_dict' in checkpoint:
                 self.model.load_state_dict(checkpoint['model_state_dict'])

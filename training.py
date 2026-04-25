@@ -19,10 +19,17 @@ def compute_validation_snr(world_model, validation_sample):
         snr_by_dim.append(snr)
     return np.array(snr_by_dim, dtype=np.float32)
 
+def print_snr(world_model, training_sample):
+    snr_by_dim_b = compute_validation_snr(world_model, training_sample)
+    short_names = ['x','y','vx','vy','a','va','ll','rl','done']
+    per_dim = ','.join(f"{n}:{v:.1f}" for n, v in zip(short_names, snr_by_dim_b))
+    print(f"SNR={np.mean(snr_by_dim_b):.1f} [{per_dim}]")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Training for the LunarLander-v3 environment.")
     parser.add_argument("--seconds", type=int, default=60, help="Number of seconds to train")
-    parser.add_argument('--sample-size', type=int, default=10, help='Number of samples for training')
+    parser.add_argument('--sample-size', type=int, default=16, help='Number of samples for training')
     args = parser.parse_args()
     seconds = args.seconds
     sample_size = args.sample_size
@@ -42,11 +49,8 @@ def main():
 
         actor_model.train(training_sample)
         world_model.train(training_sample)
-
-        snr_by_dim_b = compute_validation_snr(world_model, training_sample)
-        short_names = ['x','y','vx','vy','a','va','ll','rl','fuel','done']
-        per_dim = ','.join(f"{n}:{v:.1f}" for n, v in zip(short_names, snr_by_dim_b))
-        print(f"Iter {i} t={remaining_time:.0f}s SNR={np.mean(snr_by_dim_b):.1f} [{per_dim}]")
+        
+        print_snr(world_model, training_sample)
         i += 1
 
         # save every 10 iterations

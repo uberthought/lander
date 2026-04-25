@@ -31,7 +31,7 @@ This file provides essential guidance for AI coding agents working in this codeb
 
 ## Project Conventions
 
-- **State:** 9-dim vector (8-dim base + fuel fraction)
+- **State:** 9-dim vector (8-dim base + done)
 - **Actions:** 2 simultaneous, 4 options each (16 combos, one-hot encoded)
 - **Neural net:** 4 skip blocks, 64 nodes/layer, LeakyReLU, AdamW, MSELoss
 - **Device:** Uses MPS if available, else CPU
@@ -44,7 +44,7 @@ This file provides essential guidance for AI coding agents working in this codeb
 
 - **Device mismatch:** Model loaded on CPU, moved to MPS can cause errors
 - **Action encoding:** 2-action meshgrid → 16-dim one-hot; indexing errors possible
-- **State shape:** Must be consistent everywhere (esp. fuel level)
+- **State shape:** Must be consistent everywhere
 - **ReplayBuffer:** Atomic saves required; partial writes corrupt data
 - **Reward calculation:** Assumes specific state layout
 - **Video handling:** Path logic assumes Gymnasium wrapper behavior
