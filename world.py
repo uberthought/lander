@@ -8,14 +8,10 @@ import tempfile
 
 from configuration import STATE_SIZE, POSSIBLE_ACTIONS, LAYER_COUNT, NODE_COUNT, WORLD_LOSS_DELTA
 
-STATE_PARAMETER_NAMES = ["x", "y", "vx", "vy", "angle", "vangle", "left_leg", "right_leg", "fuel", "sin_angle", "cos_angle"]
-
 
 class SkipBlock(nn.Module):
     def __init__(self, nodes):
         super().__init__()
-        self.block0 = nn.Linear(nodes, nodes)
-        self.relu0 = nn.LeakyReLU()
         self.block1 = nn.Linear(nodes, nodes)
         self.relu1 = nn.LeakyReLU()
         self.block2 = nn.Linear(nodes, nodes)
@@ -24,8 +20,6 @@ class SkipBlock(nn.Module):
     def forward(self, input):
         s = input
         x = input
-        x = self.block0(x)
-        x = self.relu0(x)
         x = self.block1(x)
         x = self.relu1(x)
         x = self.block2(x)

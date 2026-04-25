@@ -9,7 +9,7 @@ from collections import deque
 
 from observation import create_observation
 from ReplayBuffer import ReplayBuffer
-from world import WorldModel, STATE_PARAMETER_NAMES
+from world import WorldModel
 from actor import ActorModel
 from training import compute_validation_snr
 

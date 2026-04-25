@@ -3,7 +3,7 @@ import argparse
 
 from ReplayBuffer import ReplayBuffer
 from actor import ActorModel
-from world import WorldModel, STATE_PARAMETER_NAMES
+from world import WorldModel
 
 CONTINUOUS_STATE_DIM = 6
 

@@ -21,9 +21,12 @@ def calculate_reward(obs):
     sensors = torch.clamp(sensors, 0, 1)
     sensors = 1.0 - sensors
 
-    fuel_reward = obs_norm[:, 8:9]
-    sensors = torch.cat([sensors, fuel_reward], dim=1)
-    reward = torch.norm(sensors, dim=1) / np.sqrt(7.0)
+    # fuel_reward = obs_norm[:, 8:9]
+    # sensors = torch.cat([sensors, fuel_reward], dim=1)
+    # reward = torch.norm(sensors, dim=1) / np.sqrt(7.0)
+
+    reward = torch.norm(sensors[:, :2], dim=1) / np.sqrt(2.0)
+
     return reward
 
 def create_observation(episode, time, prev_state, actions, next_state, done):
