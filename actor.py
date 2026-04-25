@@ -38,7 +38,17 @@ class ActorNet(nn.Module):
         
         self.input = nn.Linear(self.input_dim, nodes)
         self.skip_layers = nn.ModuleList([SkipBlock(nodes) for _ in range(layers)])
-        self.output = nn.Linear(nodes, output_dim)
+        self.output = nn.Sequential(
+                    nn.Linear(nodes, nodes),
+                    nn.LeakyReLU(),
+                    nn.Linear(nodes, nodes),
+                    nn.LeakyReLU(),
+                    nn.Linear(nodes, nodes),
+                    nn.LeakyReLU(),
+                    nn.Linear(nodes, nodes),
+                    nn.LeakyReLU(),
+                    nn.Linear(nodes, output_dim)
+                )
 
     def forward(self, state):
         x = self.input(state)
@@ -56,7 +66,7 @@ class ActorModel:
         self.possible_actions = POSSIBLE_ACTIONS
         self.nodes = NODE_COUNT
         self.layers = LAYER_COUNT
-        self.discount_factor = 0.5
+        self.discount_factor = 0.95
 
         self.device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
         

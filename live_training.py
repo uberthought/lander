@@ -11,6 +11,7 @@ from observation import create_observation
 from ReplayBuffer import ReplayBuffer
 from world import WorldModel, STATE_PARAMETER_NAMES
 from actor import ActorModel
+from training import compute_validation_snr
 
 import time
 
@@ -88,6 +89,11 @@ def train(env, seconds, train_every_n_episodes, video_folder):
 
             for action in actions:
                 next_state, done, fuel = _step_action(action, env, fuel)
+
+                legs = next_state[6:8]
+                if legs[0] == 1 and legs[1] == 1:
+                    done = True
+
                 if done:
                     break
 
@@ -95,23 +101,8 @@ def train(env, seconds, train_every_n_episodes, video_folder):
             replay_buffer.add(transition)
             replay_buffer0.append(transition)
 
-            # print the next world prediction from the world model
-            predicted_change = world_model.predict(prev_state, actions)
-            state_change = next_state - prev_state
-            snr = _compute_snr(state_change, predicted_change)
-            # print(f"SNR={snr: 8.4f} dB")
-
-            if np.isfinite(snr):
-                snr_list.append(snr)
-
             prev_state = next_state
         
-        snr_list = snr_list[-1024:]
-        median_snr = np.median(snr_list) if snr_list else 0.0
-        std_snr = np.std(snr_list) if snr_list else 0.0
-        print(f"Episode {episode} ended after {t} timesteps with median SNR={median_snr: 8.4f} dB, std={std_snr: 8.4f} dB")
-        snr_list = []
-
         #########
         # Live testing loop end
         #########
@@ -135,18 +126,16 @@ def train(env, seconds, train_every_n_episodes, video_folder):
         # if it's time to train the model, do so
 
         if do_training:
-            sample_len = 2 ** 10
             replay_buffer0 = list(replay_buffer0)
-            world_loss_values = []
-            world_parameter_loss_values = {}
-            for k in range(32):
+            sample_len = len(replay_buffer0) * 4
+
+            start_train_time = time.time()
+            i = 0
+            while time.time() - start_train_time < 10:
                 training_sample = replay_buffer.sample(sample_len) + replay_buffer0
                 world_metrics = world_model.train(training_sample)
                 actor_model.train(training_sample)
-                if world_metrics is not None:
-                    world_loss_values.append(world_metrics['loss'])
-                    for name, value in world_metrics['per_parameter_loss'].items():
-                        world_parameter_loss_values.setdefault(name, []).append(value)
+                i += 1
 
             world_model.save()
             actor_model.save()
@@ -155,6 +144,12 @@ def train(env, seconds, train_every_n_episodes, video_folder):
                 replay_buffer.save()
             except Exception as e:
                 print(f"Autosave failed: {e}")
+
+        snr_by_dim_b = compute_validation_snr(world_model, replay_buffer0)
+        short_names = ['x','y','vx','vy','a','va']
+        per_dim = ','.join(f"{n}:{v:.1f}" for n, v in zip(short_names, snr_by_dim_b))
+        print(f"SNR={np.mean(snr_by_dim_b):.1f} [{per_dim}]")
+
 
 def main():
     parser = argparse.ArgumentParser(description="Live training for the LunarLander-v2 environment.")

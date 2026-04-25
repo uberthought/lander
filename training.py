@@ -7,7 +7,7 @@ from world import WorldModel, STATE_PARAMETER_NAMES
 
 CONTINUOUS_STATE_DIM = 6
 
-def _compute_validation_snr(world_model, validation_sample):
+def compute_validation_snr(world_model, validation_sample):
     states_0 = np.array([obs.prev_state for obs in validation_sample], dtype=np.float32)
     states_1 = np.array([obs.next_state for obs in validation_sample], dtype=np.float32)
     actions = np.array([[int(a) for a in obs.actions] for obs in validation_sample], dtype=np.int64)
@@ -41,19 +41,19 @@ def main():
     while time.time() - start_time < seconds:
         remaining_time = seconds - (time.time() - start_time)
         training_sample = replay_buffer.sample(2**sample_size)
-        # actor_model.train(training_sample)
 
-        snr_by_dim_a = _compute_validation_snr(world_model, training_sample)
+        actor_model.train(training_sample)
         world_model.train(training_sample)
-        snr_by_dim_b = _compute_validation_snr(world_model, training_sample)
+
+        snr_by_dim_b = compute_validation_snr(world_model, training_sample)
         short_names = ['x','y','vx','vy','a','va']
         per_dim = ','.join(f"{n}:{v:.1f}" for n, v in zip(short_names, snr_by_dim_b))
-        print(f"Iter {i} t={remaining_time:.0f}s SNR={np.mean(snr_by_dim_b):.1f} DELTA={np.mean(snr_by_dim_b - snr_by_dim_a):.1f} [{per_dim}]")
+        print(f"Iter {i} t={remaining_time:.0f}s SNR={np.mean(snr_by_dim_b):.1f} [{per_dim}]")
         i += 1
 
         # save every 10 iterations
         if i % 10 == 0:
-            # actor_model.save()
+            actor_model.save()
             world_model.save()
 
 if __name__ == "__main__":

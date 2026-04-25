@@ -46,11 +46,7 @@ class WorldNet(nn.Module):
 
         self.input = nn.Linear(self.input_dim, nodes)
         self.skip_layers = nn.ModuleList([SkipBlock(nodes) for _ in range(layers)])
-        self.output = nn.Sequential(
-                    nn.Linear(nodes, nodes),
-                    nn.LeakyReLU(),
-                    nn.Linear(nodes, output_dim)
-                )
+        self.output = nn.Linear(nodes, output_dim)
     def forward(self, state, action):
         x = torch.cat([state, action], dim=-1)
         x = self.input(x)
@@ -111,16 +107,16 @@ class WorldModel:
 
         self.optimizer.zero_grad()
         outputs = self.model(states_0, actions_hot)
+
         losses = self.criterion(outputs, delta)
-        loss = losses.mean()
+        delta_var = delta.var(dim=0).clamp(min=1e-6)
+        weights = (1.0 / delta_var)
+        weights = weights / weights.mean()
+        loss = (losses * weights).mean()
         loss.backward()
+
         self.optimizer.step()
 
-        per_parameter_loss = (losses.mean(dim=0).detach().cpu().numpy())
-        return {
-            'loss': loss.item(),
-            'per_parameter_loss': dict(zip(STATE_PARAMETER_NAMES, per_parameter_loss.tolist()))
-        }
 
     def save(self):
         fd1, tmp_path = tempfile.mkstemp(prefix='.tmp_world_', suffix='.pt', dir=os.path.dirname(self.model_path) or '.')
