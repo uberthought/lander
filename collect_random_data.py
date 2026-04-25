@@ -21,8 +21,7 @@ def step_action(action, env, fuel):
     if action != 0:
         fuel -= 1
     done = done or truncated
-    angle = next_state[4]
-    next_state = np.concatenate((next_state, [fuel / 1000.0, np.sin(angle), np.cos(angle)]))
+    next_state = np.concatenate((next_state, [fuel / 1000.0, float(done)]))
 
     return next_state, done, fuel
 
@@ -35,22 +34,15 @@ def collect(env, episodes, video_folder):
         replay_buffer.increment_episode()
         done = False
         truncated = False
-        t = 0
         prev_state, _ = env.reset()
         fuel = 1000
-        prev_state = np.concatenate((prev_state, [fuel / 1000.0, np.sin(prev_state[4]), np.cos(prev_state[4])]))
+        prev_state = np.concatenate((prev_state, [fuel / 1000.0, 0.0]))
 
         while not done and not truncated:
-            t += 1
+            action = np.random.randint(0, POSSIBLE_ACTIONS)
+            next_state, done, fuel = step_action(action, env, fuel)
 
-            actions = np.random.randint(0, POSSIBLE_ACTIONS, size=1).tolist()
-
-            for action in actions:
-                next_state, done, fuel = step_action(action, env, fuel)
-                if done:
-                    break
-
-            transition = create_observation(episode, t, prev_state, actions, next_state, done)
+            transition = create_observation(prev_state, action, next_state)
             replay_buffer.add(transition)
             prev_state = next_state
 

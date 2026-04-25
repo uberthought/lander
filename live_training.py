@@ -42,8 +42,7 @@ def _step_action(action, env, fuel):
     if action != 0:
         fuel -= 1
     done = done or truncated
-    angle = next_state[4]
-    next_state = np.concatenate((next_state, [fuel / 1000.0, np.sin(angle), np.cos(angle)]))
+    next_state = np.concatenate((next_state, [fuel / 1000.0, float(done)]))
 
     return next_state, done, fuel
 
@@ -74,7 +73,7 @@ def train(env, seconds, train_every_n_episodes, video_folder):
 
         prev_state, _ = env.reset()
         fuel = 1000
-        prev_state = np.concatenate((prev_state, [fuel / 1000.0, np.sin(prev_state[4]), np.cos(prev_state[4])]))
+        prev_state = np.concatenate((prev_state, [fuel / 1000.0, 0.0]))
 
         do_training = train_every_n_episodes > 0 and episode % train_every_n_episodes == 0
 
@@ -90,8 +89,9 @@ def train(env, seconds, train_every_n_episodes, video_folder):
             legs = next_state[6:8]
             if legs[0] == 1 and legs[1] == 1:
                 done = True
+                next_state[-1] = 1.0
 
-            transition = create_observation(episode, t, prev_state, [action], next_state, done)
+            transition = create_observation(prev_state, action, next_state)
             replay_buffer.add(transition)
             replay_buffer0.append(transition)
 
@@ -140,7 +140,7 @@ def train(env, seconds, train_every_n_episodes, video_folder):
                 print(f"Autosave failed: {e}")
 
         snr_by_dim_b = compute_validation_snr(world_model, replay_buffer0)
-        short_names = ['x','y','vx','vy','a','va']
+        short_names = ['x','y','vx','vy','a','va','ll','rl','fuel','done']
         per_dim = ','.join(f"{n}:{v:.1f}" for n, v in zip(short_names, snr_by_dim_b))
         print(f"SNR={np.mean(snr_by_dim_b):.1f} [{per_dim}]")
 

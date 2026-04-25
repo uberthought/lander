@@ -88,7 +88,7 @@ class WorldModel:
 
         self.model.train()
 
-        actions = torch.tensor(np.array([[int(a) for a in obs.actions] for obs in observations]), dtype=torch.long, device=self.device)
+        actions = torch.tensor(np.array([int(obs.action) for obs in observations]), dtype=torch.long, device=self.device)
         states_0_np = np.array([obs.prev_state for obs in observations], dtype=np.float32)
         states_1_np = np.array([obs.next_state for obs in observations], dtype=np.float32)
         states_0 = torch.tensor(states_0_np, dtype=torch.float32, device=self.device)
@@ -96,14 +96,13 @@ class WorldModel:
         delta = states_1 - states_0
 
         actions_hot = F.one_hot(actions, num_classes=self.possible_actions).float()
-        actions_hot = actions_hot.view(actions_hot.size(0), -1)
 
         self.optimizer.zero_grad()
         outputs = self.model(states_0, actions_hot)
 
         losses = self.criterion(outputs, delta)
-        delta_var = delta.var(dim=0).clamp(min=1e-6)
-        weights = (1.0 / delta_var)
+        delta_std = delta.var(dim=0).clamp(min=1e-6).sqrt()
+        weights = (1.0 / delta_std)
         weights = weights / weights.mean()
         loss = (losses * weights).mean()
         loss.backward()
@@ -140,9 +139,8 @@ class WorldModel:
             state_tensor = torch.tensor(states_np, dtype=torch.float32, device=self.device)
             actions_tensor = torch.tensor(np.array(actions), dtype=torch.long, device=self.device)
             actions_hot = F.one_hot(actions_tensor, num_classes=self.possible_actions).float()
-            actions_hot = actions_hot.view(actions_hot.size(0), -1)
             result = self.model(state_tensor, actions_hot).cpu().numpy()
         return result
 
-    def predict(self, state, actions):
-        return self.predict_batch([state], [actions])[0]
+    def predict(self, state, action):
+        return self.predict_batch([state], [action])[0]

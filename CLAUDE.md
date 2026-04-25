@@ -34,7 +34,7 @@ bash clean.sh
 
 ### State & Action Space
 
-- **State**: 9-dimensional — `[x, y, vx, vy, angle, vangle, left_leg, right_leg, fuel/1000]`
+- **State**: 10-dimensional — `[x, y, vx, vy, angle, vangle, left_leg, right_leg, fuel/1000, done]`
 - **Actions**: 2 simultaneous action slots, each 0–3 (off/right/left/reverse), giving **16 combinations** (`4^2`)
 - Actions are **one-hot encoded** into a 16-dim vector for network input
 
@@ -63,7 +63,7 @@ collect_random_data.py → ReplayBuffer (replay_buffer.dat, memmap, ~369 MB, cap
 
 - **Device**: auto-selects MPS (Apple Silicon) → CPU fallback
 - **Reward**: normalized mean of `1 - abs(sensor/norm_factor)` across first 6 dims + fuel; clamped to [0,1]
-- **Normalization factors** (in `observation.py`): `[1, 1.75, 4, 4, π, 5, 1, 1, 1]`
+- **Normalization factors** (in `observation.py`): `[1, 1.75, 4, 4, π, 5, 1, 1, 1, 1]` — last entry is done (already in [0,1])
 - **Validation metric**: SNR (dB) = `10 * log10(signal / noise)` — higher is better world model accuracy
 - **Observation namedtuple**: `(episode, time, prev_state, actions, next_state, done)`
 - **Atomic writes**: both ReplayBuffer metadata and model checkpoints use temp-file + rename
@@ -72,7 +72,7 @@ collect_random_data.py → ReplayBuffer (replay_buffer.dat, memmap, ~369 MB, cap
 
 | Constant | Value | Meaning |
 |----------|-------|---------|
-| `STATE_SIZE` | 9 | Dimensions of state vector |
+| `STATE_SIZE` | 10 | Dimensions of state vector |
 | `POSSIBLE_ACTIONS` | 4 | Options per action slot |
 | `LAYER_COUNT` | 4 | Number of skip blocks |
 | `NODE_COUNT` | 64 | Width of hidden layers |
