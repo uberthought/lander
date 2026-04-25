@@ -19,11 +19,14 @@ def compute_validation_snr(world_model, validation_sample):
         snr_by_dim.append(snr)
     return np.array(snr_by_dim, dtype=np.float32)
 
-def print_snr(world_model, training_sample):
+def print_snr(world_model, training_sample, remain_time=None):
     snr_by_dim_b = compute_validation_snr(world_model, training_sample)
     short_names = ['x','y','vx','vy','a','va','ll','rl','done']
     per_dim = ','.join(f"{n}:{v:.1f}" for n, v in zip(short_names, snr_by_dim_b))
-    print(f"SNR={np.mean(snr_by_dim_b):.1f} [{per_dim}]")
+    if remain_time is not None:
+        print(f"Iter t={remain_time:.0f}s SNR={np.mean(snr_by_dim_b):.1f} [{per_dim}]")
+    else:
+        print(f"SNR={np.mean(snr_by_dim_b):.1f} [{per_dim}]")
 
 
 def main():
@@ -50,7 +53,7 @@ def main():
         actor_model.train(training_sample)
         world_model.train(training_sample)
         
-        print_snr(world_model, training_sample)
+        print_snr(world_model, training_sample, remain_time=remaining_time)
         i += 1
 
         # save every 10 iterations
