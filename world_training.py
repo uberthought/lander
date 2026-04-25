@@ -18,20 +18,13 @@ def _clamp_state(state):
     state[6] = np.clip(state[6], 0.0, 1.0)
     state[7] = np.clip(state[7], 0.0, 1.0)
     state[8] = np.clip(state[8], 0.0, 1.0)
-    state[9] = np.clip(state[9], 0.0, 1.0)
     return state
 
 
 def _is_done(state, t, max_steps):
     if t >= max_steps:
         return True
-    if state[8] <= 0.0:
-        return True
-    if state[9] >= DONE_THRESHOLD:
-        return True
-    if state[6] > LEG_DONE_THRESHOLD and state[7] > LEG_DONE_THRESHOLD:
-        return True
-    if abs(state[0]) > POS_DONE_THRESHOLD or abs(state[1]) > POS_DONE_THRESHOLD:
+    if state[8] >= DONE_THRESHOLD:
         return True
     return False
 
