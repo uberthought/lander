@@ -147,7 +147,7 @@ def train(env, seconds, train_every_n_episodes, video_folder):
 
 def main():
     parser = argparse.ArgumentParser(description="Live training for the LunarLander-v2 environment.")
-    parser.add_argument("--seconds", type=int, default=600, help="Number of seconds to train")
+    parser.add_argument("--seconds", type=int, default=60, help="Number of seconds to train")
     parser.add_argument('--train-every', type=int, default=4, help='Number of episodes between training sessions')
     seconds = parser.parse_args().seconds
     train_every = parser.parse_args().train_every

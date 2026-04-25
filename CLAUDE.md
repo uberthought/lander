@@ -47,7 +47,7 @@ Optimizer: AdamW
 ```
 
 - **Actor loss**: MSE (predicted Q-value vs. cumulative reward target)
-- **World loss**: Huber (delta=1.0) with per-dimension weights `[1,1,1,2,1,4,1,1,1]` — extra weight on `vy` and `vangle`
+- **World loss**: Huber (delta=1.0) with per-dimension weights `1/std(delta)`, normalized per batch
 
 ### Data Flow
 
