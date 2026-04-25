@@ -133,7 +133,7 @@ def train(env, seconds, train_every_n_episodes, video_folder):
             i = 0
             while time.time() - start_train_time < 10:
                 training_sample = replay_buffer.sample(sample_len) + replay_buffer0
-                world_metrics = world_model.train(training_sample)
+                world_model.train(training_sample)
                 actor_model.train(training_sample)
                 i += 1
 
