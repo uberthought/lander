@@ -36,15 +36,22 @@ class WorldNet(nn.Module):
         super().__init__()
         self.layers = layers
 
-        self.sensor_input = nn.Linear(6, nodes)
-        self.legs_input = nn.Linear(2, nodes)
-        self.done_input = nn.Linear(1, nodes)
+        self.location_input = nn.Linear(3, nodes)
+        self.velocity_input = nn.Linear(3, nodes)
+        self.bool_input = nn.Linear(3, nodes)
         self.action_input = nn.Linear(action_dim, nodes)
         self.skip_layers = nn.ModuleList([SkipBlock(nodes) for _ in range(layers)])
         self.output = nn.Linear(nodes, output_dim)
 
     def forward(self, state, action):
-        x = self.sensor_input(state[..., :6]) + self.legs_input(state[..., 6:8]) + self.done_input(state[..., 8:9])
+        # location is 0, 1, 4
+        # velocity is 2, 3, 5
+        # legs is 6, 7
+        # done is 8
+        location = state[..., [0, 1, 4]]
+        velocity = state[..., [2, 3, 5]]
+        bools = state[..., [6, 7, 8]]
+        x = self.location_input(location) + self.velocity_input(velocity) + self.bool_input(bools)
         y = self.action_input(action)
         x = x + y
         for i in range(self.layers):
@@ -63,6 +70,7 @@ class WorldModel:
         self.model = WorldNet(self.possible_actions, NODE_COUNT, LAYER_COUNT, STATE_SIZE)
         self.optimizer = optim.AdamW(self.model.parameters(), lr=0.001)
         self.criterion = nn.HuberLoss(delta=WORLD_LOSS_DELTA, reduction='none')
+        self.delta_std = torch.ones(STATE_SIZE, device=self.device)
 
         if os.path.exists(self.model_path):
             checkpoint = torch.load(self.model_path, map_location="mps" if torch.backends.mps.is_available() else "cpu")
@@ -70,6 +78,8 @@ class WorldModel:
                 self.model.load_state_dict(checkpoint['model_state_dict'])
                 self.model.to(self.device)
                 self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+                if 'delta_std' in checkpoint:
+                    self.delta_std = checkpoint['delta_std'].to(self.device)
                 print(f"Loaded model and optimizer state from {self.model_path}")
             else:
                 # Backward compatibility: support old format (just state_dict)
@@ -98,11 +108,12 @@ class WorldModel:
         self.optimizer.zero_grad()
         outputs = self.model(states_0, actions_hot)
 
-        losses = self.criterion(outputs, delta)
-        delta_std = delta.var(dim=0).clamp(min=1e-6).sqrt()
-        weights = (1.0 / delta_std)
-        weights = weights / weights.mean()
-        loss = (losses * weights).mean()
+        with torch.no_grad():
+            batch_std = delta.std(dim=0).clamp(min=1e-6)
+            self.delta_std = 0.99 * self.delta_std + 0.01 * batch_std
+
+        losses = self.criterion(outputs / self.delta_std, delta / self.delta_std)
+        loss = losses.mean()
         loss.backward()
 
         self.optimizer.step()
@@ -116,6 +127,7 @@ class WorldModel:
             torch.save({
                 'model_state_dict': self.model.state_dict(),
                 'optimizer_state_dict': self.optimizer.state_dict(),
+                'delta_std': self.delta_std,
             }, tmp_path)
             os.replace(tmp_path, self.model_path)
 
