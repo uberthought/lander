@@ -15,7 +15,7 @@ from training import compute_validation_snr
 
 import time
 
-from configuration import NUM_ACTIONS, POSSIBLE_ACTIONS
+from configuration import POSSIBLE_ACTIONS
 
 CONTINUOUS_STATE_DIM = 6
 VALIDATION_SAMPLE_SIZE = 2 ** 10
@@ -84,7 +84,6 @@ def train(env, seconds, train_every_n_episodes, video_folder):
 
         while not done and not truncated:
             t += 1
-            # actions = np.random.randint(0, POSSIBLE_ACTIONS, size=NUM_ACTIONS).tolist()
             actions = actor_model.get_best_actions([prev_state])[0].tolist()
 
             for action in actions:

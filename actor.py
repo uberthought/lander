@@ -6,7 +6,7 @@ import numpy as np
 import os
 import tempfile
 
-from configuration import STATE_SIZE, POSSIBLE_ACTIONS, NUM_ACTIONS, LAYER_COUNT, NODE_COUNT
+from configuration import STATE_SIZE, POSSIBLE_ACTIONS, LAYER_COUNT, NODE_COUNT
 from observation import calculate_reward
 
 class SkipBlock(nn.Module):
@@ -62,7 +62,6 @@ class ActorModel:
     def __init__(self, model_path="models/actor_model.pt"):
         self.model_path = model_path
         self.input_dim = STATE_SIZE
-        self.num_actions = NUM_ACTIONS
         self.possible_actions = POSSIBLE_ACTIONS
         self.nodes = NODE_COUNT
         self.layers = LAYER_COUNT
@@ -70,7 +69,7 @@ class ActorModel:
 
         self.device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
         
-        net_input_dim = self.input_dim + self.num_actions * self.possible_actions
+        net_input_dim = self.input_dim + self.possible_actions
         self.model = ActorNet(net_input_dim, self.nodes, self.layers, 1)
         if os.path.exists(self.model_path):
             self.model.load_state_dict(torch.load(self.model_path, map_location="cpu"))
@@ -91,17 +90,17 @@ class ActorModel:
         dones = torch.tensor([obs.done for obs in observations], dtype=torch.float32, device=self.device)
 
         actions_onehot = F.one_hot(actions, num_classes=self.possible_actions).float()
-        actions_onehot = actions_onehot.view(-1, self.num_actions * self.possible_actions)
+        actions_onehot = actions_onehot.view(-1, self.possible_actions)
 
-        states_1_tile = states_1.unsqueeze(1).repeat(1, self.possible_actions ** self.num_actions, 1)
+        states_1_tile = states_1.unsqueeze(1).repeat(1, self.possible_actions, 1)
         
         # actions_1 needs to be a tensor of possible actions, so for example
         # if possible_actions=4 and num_actions=2 it should be [0,0], [0,1], [0,2], [0,3], [1,0], [1,1], ... [3,3]
-        grids = torch.meshgrid(*[torch.arange(self.possible_actions, device=self.device) for _ in range(self.num_actions)], indexing='ij')
-        actions_1 = torch.stack(grids, dim=-1).reshape(-1, self.num_actions)  # shape: (possible_actions**num_actions, num_actions)
+        grids = torch.meshgrid(*[torch.arange(self.possible_actions, device=self.device) for _ in range(1)], indexing='ij')
+        actions_1 = torch.stack(grids, dim=-1).reshape(-1, 1)  # shape: (possible_actions, 1)
  
         actions_1_onehot = F.one_hot(actions_1, num_classes=self.possible_actions).unsqueeze(0)
-        actions_1_onehot = actions_1_onehot.view(-1, self.num_actions * self.possible_actions)
+        actions_1_onehot = actions_1_onehot.view(-1, self.possible_actions)
         actions_1_onehot = actions_1_onehot.repeat(states_1.size(0), 1, 1)
         inputs_1 = torch.cat([states_1_tile, actions_1_onehot], dim=-1)
 
@@ -156,18 +155,18 @@ class ActorModel:
         
         states_tensor = torch.tensor(np.array(states), dtype=torch.float32, device=self.device)
         
-        grids = torch.meshgrid(*[torch.arange(self.possible_actions, device=self.device) for _ in range(self.num_actions)], indexing='ij')
-        actions_1 = torch.stack(grids, dim=-1).reshape(-1, self.num_actions)  # shape: (possible_actions**num_actions, num_actions)
+        grids = torch.meshgrid(*[torch.arange(self.possible_actions, device=self.device) for _ in range(1)], indexing='ij')
+        actions_1 = torch.stack(grids, dim=-1).reshape(-1, 1)  # shape: (possible_actions, 1)
         actions_1_onehot = F.one_hot(actions_1, num_classes=self.possible_actions).unsqueeze(0)
-        actions_1_onehot = actions_1_onehot.view(-1, self.num_actions * self.possible_actions)
+        actions_1_onehot = actions_1_onehot.view(-1, self.possible_actions)
 
         actions_1_onehot = actions_1_onehot.repeat(states_tensor.size(0), 1, 1)
-        states_expanded = states_tensor.unsqueeze(1).repeat(1, self.possible_actions ** self.num_actions, 1)
+        states_expanded = states_tensor.unsqueeze(1).repeat(1, self.possible_actions, 1)
         inputs_1 = torch.cat([states_expanded, actions_1_onehot], dim=-1)
 
         with torch.no_grad():
             predicted_rewards = self.model(inputs_1)
-        predicted_rewards = predicted_rewards.view(states_tensor.size(0), self.possible_actions ** self.num_actions)
+        predicted_rewards = predicted_rewards.view(states_tensor.size(0), self.possible_actions)
 
         best_action_index = torch.argmax(predicted_rewards, dim=1)
         best_actions = actions_1[best_action_index]

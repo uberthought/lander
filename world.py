@@ -6,7 +6,7 @@ import numpy as np
 import os
 import tempfile
 
-from configuration import STATE_SIZE, POSSIBLE_ACTIONS, NUM_ACTIONS, LAYER_COUNT, NODE_COUNT, WORLD_LOSS_DELTA
+from configuration import STATE_SIZE, POSSIBLE_ACTIONS, LAYER_COUNT, NODE_COUNT, WORLD_LOSS_DELTA
 
 STATE_PARAMETER_NAMES = ["x", "y", "vx", "vy", "angle", "vangle", "left_leg", "right_leg", "fuel", "sin_angle", "cos_angle"]
 
@@ -60,14 +60,13 @@ class WorldModel:
     def __init__(self, model_path="models/world_model.pt"):
         self.model_path = model_path
         self.input_dim = STATE_SIZE
-        self.num_actions = NUM_ACTIONS
         self.possible_actions = POSSIBLE_ACTIONS
         self.nodes = NODE_COUNT
         self.layers = LAYER_COUNT
 
         self.device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 
-        net_input_dim = self.input_dim + self.num_actions * self.possible_actions
+        net_input_dim = self.input_dim + self.possible_actions
         self.model = WorldNet(net_input_dim, self.nodes, self.layers, self.input_dim)
         self.optimizer = optim.AdamW(self.model.parameters(), lr=0.001)
         self.criterion = nn.HuberLoss(delta=WORLD_LOSS_DELTA, reduction='none')

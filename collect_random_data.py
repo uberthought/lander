@@ -6,7 +6,7 @@ import argparse
 from observation import create_observation
 from ReplayBuffer import ReplayBuffer
 
-from configuration import NUM_ACTIONS, POSSIBLE_ACTIONS
+from configuration import POSSIBLE_ACTIONS
 
 def step_action(action, env, fuel):
     if action == 0:
@@ -43,7 +43,7 @@ def collect(env, episodes, video_folder):
         while not done and not truncated:
             t += 1
 
-            actions = np.random.randint(0, POSSIBLE_ACTIONS, size=NUM_ACTIONS).tolist()
+            actions = np.random.randint(0, POSSIBLE_ACTIONS, size=1).tolist()
 
             for action in actions:
                 next_state, done, fuel = step_action(action, env, fuel)

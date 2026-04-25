@@ -74,6 +74,5 @@ collect_random_data.py → ReplayBuffer (replay_buffer.dat, memmap, ~369 MB, cap
 |----------|-------|---------|
 | `STATE_SIZE` | 9 | Dimensions of state vector |
 | `POSSIBLE_ACTIONS` | 4 | Options per action slot |
-| `NUM_ACTIONS` | 1 | Number of action slots (each 0–3) |
 | `LAYER_COUNT` | 4 | Number of skip blocks |
 | `NODE_COUNT` | 64 | Width of hidden layers |
