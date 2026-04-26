@@ -9,6 +9,8 @@ def compute_validation_snr(world_model, validation_sample):
     states_0 = np.array([obs.prev_state for obs in validation_sample], dtype=np.float32)
     states_1 = np.array([obs.next_state for obs in validation_sample], dtype=np.float32)
     actions = np.array([int(obs.action) for obs in validation_sample], dtype=np.int64)
+    states_0 = states_0[:, :6]
+    states_1 = states_1[:, :6]
     actual_change = states_1 - states_0
     predicted_change = world_model.predict_batch(states_0, actions)
     snr_by_dim = []
@@ -21,7 +23,7 @@ def compute_validation_snr(world_model, validation_sample):
 
 def print_snr(world_model, training_sample, remain_time=None):
     snr_by_dim_b = compute_validation_snr(world_model, training_sample)
-    short_names = ['x','y','vx','vy','a','va','ll','rl','done']
+    short_names = ['x','y','vx','vy','a','va']
     per_dim = ','.join(f"{n}:{v:.1f}" for n, v in zip(short_names, snr_by_dim_b))
     if remain_time is not None:
         print(f"Iter t={remain_time:.0f}s SNR={np.mean(snr_by_dim_b):.1f} [{per_dim}]")

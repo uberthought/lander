@@ -36,7 +36,6 @@ class ActorNet(nn.Module):
 
         self.location_input = nn.Linear(3, nodes)
         self.velocity_input = nn.Linear(3, nodes)
-        self.bool_input = nn.Linear(3, nodes)
         self.action_input = nn.Linear(action_dim, nodes)
         self.skip_layers = nn.ModuleList([SkipBlock(nodes) for _ in range(layers)])
         self.output = nn.Linear(nodes, 1)
@@ -44,8 +43,7 @@ class ActorNet(nn.Module):
     def forward(self, state, action):
         location = state[..., [0, 1, 4]]
         velocity = state[..., [2, 3, 5]]
-        bools = state[..., [6, 7, 8]]
-        x = self.location_input(location) + self.velocity_input(velocity) + self.bool_input(bools)
+        x = self.location_input(location) + self.velocity_input(velocity)
         y = self.action_input(action)
         x = x + y
         for i in range(self.layers):

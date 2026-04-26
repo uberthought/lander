@@ -38,7 +38,6 @@ class WorldNet(nn.Module):
 
         self.location_input = nn.Linear(3, nodes)
         self.velocity_input = nn.Linear(3, nodes)
-        self.bool_input = nn.Linear(3, nodes)
         self.action_input = nn.Linear(action_dim, nodes)
         self.skip_layers = nn.ModuleList([SkipBlock(nodes) for _ in range(layers)])
 
@@ -46,22 +45,17 @@ class WorldNet(nn.Module):
             nn.Linear(nodes, 6),
             nn.Tanh()
         )
-        self.bool_output =  nn.Sequential(
-            nn.Linear(nodes, 3),
-            nn.Sigmoid()
-        )
 
     def forward(self, state, action):
-        # location is 0, 1, 4 — velocity is 2, 3, 5 — bools is 6, 7, 8
+        # location is 0, 1, 4 — velocity is 2, 3, 5
         location = state[..., [0, 1, 4]]
         velocity = state[..., [2, 3, 5]]
-        bools = state[..., [6, 7, 8]]
-        x = self.location_input(location) + self.velocity_input(velocity) + self.bool_input(bools)
+        x = self.location_input(location) + self.velocity_input(velocity)
         y = self.action_input(action)
         x = x + y
         for i in range(self.layers):
             x = self.skip_layers[i](x)
-        return self.continuous_output(x), self.bool_output(x)
+        return self.continuous_output(x)
 
 
 class WorldModel:
@@ -74,7 +68,6 @@ class WorldModel:
         self.model = WorldNet(self.possible_actions, NODE_COUNT, LAYER_COUNT)
         self.optimizer = optim.AdamW(self.model.parameters(), lr=0.001)
         self.criterion = nn.HuberLoss(delta=WORLD_LOSS_DELTA, reduction='none')
-        self.bce = nn.BCELoss()
         self.delta_std = torch.ones(6, device=self.device)
 
         if os.path.exists(self.model_path):
@@ -113,16 +106,14 @@ class WorldModel:
         actions_hot = F.one_hot(actions, num_classes=self.possible_actions).float()
 
         self.optimizer.zero_grad()
-        continuous_out, bool_probs = self.model(states_0, actions_hot)
+        continuous_out = self.model(states_0, actions_hot)
 
         continuous_delta = delta[:, :6]
         with torch.no_grad():
             batch_std = continuous_delta.std(dim=0).clamp(min=1e-6)
             self.delta_std = 0.99 * self.delta_std + 0.01 * batch_std
 
-        huber_loss = self.criterion(continuous_out / self.delta_std, continuous_delta / self.delta_std).mean()
-        bce_loss = self.bce(bool_probs, states_1[:, 6:9])
-        loss = huber_loss + bce_loss
+        loss = self.criterion(continuous_out / self.delta_std, continuous_delta / self.delta_std).mean()
         loss.backward()
 
         self.optimizer.step()
@@ -158,9 +149,8 @@ class WorldModel:
             state_tensor = torch.tensor(states_np, dtype=torch.float32, device=self.device)
             actions_tensor = torch.tensor(np.array(actions), dtype=torch.long, device=self.device)
             actions_hot = F.one_hot(actions_tensor, num_classes=self.possible_actions).float()
-            continuous_delta, bool_probs = self.model(state_tensor, actions_hot)
-            bool_delta = bool_probs - state_tensor[:, 6:9]
-            result = torch.cat([continuous_delta, bool_delta], dim=-1).cpu().numpy()
+            continuous_delta = self.model(state_tensor, actions_hot)
+            result = continuous_delta.cpu().numpy()
         return result
 
     def predict(self, state, action):
