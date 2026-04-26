@@ -41,7 +41,7 @@ def _run_imaginary_episode(seed_state, actor_model, world_model, max_steps, epis
         delta = world_model.predict(prev_state, action)
         next_state = _clamp_state(prev_state + delta)
         done = _is_done(next_state, t, max_steps)
-        next_state[9] = float(done)
+        next_state[8] = float(done)
 
         transitions.append(create_observation(prev_state, action, next_state))
 

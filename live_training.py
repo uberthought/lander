@@ -81,10 +81,10 @@ def train(env, seconds, train_every_n_episodes, video_folder):
             action = actor_model.get_best_action(prev_state)
             next_state, done = _step_action(action, env)
 
-            legs = next_state[6:8]
-            if legs[0] == 1 and legs[1] == 1:
-                done = True
-                next_state[-1] = 1.0
+            # legs = next_state[6:8]
+            # if legs[0] == 1 and legs[1] == 1:
+            #     done = True
+            #     next_state[-1] = 1.0
 
             transition = create_observation(prev_state, action, next_state)
             replay_buffer.add(transition)

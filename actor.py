@@ -30,19 +30,22 @@ class SkipBlock(nn.Module):
 # input is the current state and a list of actions (one-hot encoded)
 # output is the predicted reward for the given state and action
 class ActorNet(nn.Module):
-    def __init__(self, action_dim, nodes, layers, output_dim):
+    def __init__(self, action_dim, nodes, layers):
         super().__init__()
         self.layers = layers
 
-        self.sensor_input = nn.Linear(6, nodes)
-        self.legs_input = nn.Linear(2, nodes)
-        self.done_input = nn.Linear(1, nodes)
+        self.location_input = nn.Linear(3, nodes)
+        self.velocity_input = nn.Linear(3, nodes)
+        self.bool_input = nn.Linear(3, nodes)
         self.action_input = nn.Linear(action_dim, nodes)
         self.skip_layers = nn.ModuleList([SkipBlock(nodes) for _ in range(layers)])
-        self.output = nn.Linear(nodes, output_dim)
+        self.output = nn.Linear(nodes, 1)
 
     def forward(self, state, action):
-        x = self.sensor_input(state[..., :6]) + self.legs_input(state[..., 6:8]) + self.done_input(state[..., 8:9])
+        location = state[..., [0, 1, 4]]
+        velocity = state[..., [2, 3, 5]]
+        bools = state[..., [6, 7, 8]]
+        x = self.location_input(location) + self.velocity_input(velocity) + self.bool_input(bools)
         y = self.action_input(action)
         x = x + y
         for i in range(self.layers):
@@ -59,7 +62,7 @@ class ActorModel:
 
         self.device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
         
-        self.model = ActorNet(POSSIBLE_ACTIONS, NODE_COUNT, LAYER_COUNT, 1)
+        self.model = ActorNet(POSSIBLE_ACTIONS, NODE_COUNT, LAYER_COUNT)
         self.optimizer = optim.AdamW(self.model.parameters())
         self.criterion = nn.MSELoss()
 
@@ -144,7 +147,7 @@ class ActorModel:
         predicted_rewards = predicted_rewards.view(state_tensor.size(0), self.possible_actions)
 
         probs = F.softmax(predicted_rewards, dim=1)
-        probs = probs * 25
+        probs = probs * 35
         probs = F.softmax(probs, dim=1)
         best_action_index = torch.multinomial(probs, num_samples=1).squeeze(1)
         best_action = actions_1[best_action_index]
