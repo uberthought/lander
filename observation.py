@@ -22,9 +22,8 @@ def calculate_reward(obs):
     sensors = 1.0 - sensors
 
 
-    # reward = torch.norm(sensors, dim=1) / np.sqrt(7.0)
-
-    reward = torch.norm(sensors[:, [0, 1, 4]], dim=1) / np.sqrt(3.0)
+    reward = torch.norm(sensors, dim=1) / np.sqrt(6.0)
+    # reward = torch.norm(sensors[:, [0, 1, 4]], dim=1) / np.sqrt(3.0)
 
     return reward
 
