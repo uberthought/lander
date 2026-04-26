@@ -144,13 +144,10 @@ class ActorModel:
             predicted_rewards = self.model(state_expanded, actions_1_onehot)
         predicted_rewards = predicted_rewards.view(state_tensor.size(0), self.possible_actions)
 
-        best_action_index = predicted_rewards.argmax(dim=1)
-        return best_action_index.item()
+        probs = F.softmax(predicted_rewards, dim=1)
+        probs = probs * 100
+        probs = F.softmax(probs, dim=1)
+        best_action_index = torch.multinomial(probs, num_samples=1).squeeze(1)
+        best_action = actions_1[best_action_index]
 
-        # probs = F.softmax(predicted_rewards, dim=1)
-        # probs = probs * 100
-        # probs = F.softmax(probs, dim=1)
-        # best_action_index = torch.multinomial(probs, num_samples=1).squeeze(1)
-        # best_action = actions_1[best_action_index]
-
-        # return best_action.item()
+        return best_action.item()

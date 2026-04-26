@@ -41,8 +41,13 @@ class WorldNet(nn.Module):
         self.action_input = nn.Linear(action_dim, nodes)
         self.skip_layers = nn.ModuleList([SkipBlock(nodes) for _ in range(layers)])
 
-        self.continuous_output = nn.Sequential(
-            nn.Linear(nodes, 6),
+        self.location_output = nn.Sequential(
+            nn.Linear(nodes, 3),
+            nn.Tanh()
+        )
+
+        self.velocity_output = nn.Sequential(
+            nn.Linear(nodes, 3),
             nn.Tanh()
         )
 
@@ -55,7 +60,8 @@ class WorldNet(nn.Module):
         x = x + y
         for i in range(self.layers):
             x = self.skip_layers[i](x)
-        return self.continuous_output(x)
+        return self.location_output(x), self.velocity_output(x)
+        
 
 
 class WorldModel:
@@ -102,18 +108,30 @@ class WorldModel:
         states_0 = torch.tensor(states_0_np, dtype=torch.float32, device=self.device)
         states_1 = torch.tensor(states_1_np, dtype=torch.float32, device=self.device)
         delta = states_1 - states_0
+        delta = delta[:, :6]
 
         actions_hot = F.one_hot(actions, num_classes=self.possible_actions).float()
+        location_target = delta[..., [0, 1, 4]]  # x, y, angle
+        velocity_target = delta[..., [2, 3, 5]]  # vx, vy, va
 
         self.optimizer.zero_grad()
-        continuous_out = self.model(states_0, actions_hot)
+        location_pred, velocity_pred = self.model(states_0, actions_hot)
 
-        continuous_delta = delta[:, :6]
-        with torch.no_grad():
-            batch_std = continuous_delta.std(dim=0).clamp(min=1e-6)
-            self.delta_std = 0.99 * self.delta_std + 0.01 * batch_std
+        location_target_std = location_target.var(dim=0).clamp(min=1e-6).sqrt()
+        location_target_weights = (1.0 / location_target_std)
+        location_target_weights = location_target_weights / location_target_weights.mean()
 
-        loss = self.criterion(continuous_out / self.delta_std, continuous_delta / self.delta_std).mean()
+        velocity_target_std = velocity_target.var(dim=0).clamp(min=1e-6).sqrt()
+        velocity_target_weights = (1.0 / velocity_target_std)
+        velocity_target_weights = velocity_target_weights / velocity_target_weights.mean()
+
+        location_losses = self.criterion(location_pred, location_target)
+        velocity_losses = self.criterion(velocity_pred, velocity_target)
+
+        location_losses = location_losses * location_target_weights
+        velocity_losses = velocity_losses * velocity_target_weights
+
+        loss = location_losses.mean() + velocity_losses.mean()
         loss.backward()
 
         self.optimizer.step()
@@ -149,9 +167,11 @@ class WorldModel:
             state_tensor = torch.tensor(states_np, dtype=torch.float32, device=self.device)
             actions_tensor = torch.tensor(np.array(actions), dtype=torch.long, device=self.device)
             actions_hot = F.one_hot(actions_tensor, num_classes=self.possible_actions).float()
-            continuous_delta = self.model(state_tensor, actions_hot)
-            result = continuous_delta.cpu().numpy()
-        return result
+            location_delta, velocity_delta = self.model(state_tensor, actions_hot)
+            result = torch.empty((state_tensor.size(0), 6), device=self.device)
+            result[:, [0, 1, 4]] = location_delta
+            result[:, [2, 3, 5]] = velocity_delta
+            return result.cpu().numpy()
 
     def predict(self, state, action):
         return self.predict_batch([state], [action])[0]
