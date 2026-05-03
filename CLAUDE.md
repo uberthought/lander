@@ -22,7 +22,7 @@ python3 training.py --seconds 60 --sample-size 16   # sample-size is exponent: 2
 python3 live_training.py --seconds 600 --train-every 4
 
 # World-model imagination training (model-based, no environment interaction)
-python3 world_training.py --seconds 60 --rollout-steps 20
+python3 world_training.py --seconds 60 --rollout-steps 10
 
 # Run the full pipeline (collect → offline train → live train)
 bash training_run.sh

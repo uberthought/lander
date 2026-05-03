@@ -94,11 +94,11 @@ def train(seconds, rollout_steps):
         if iteration % 10 == 0:
             actor_model.save()
 
-        elapsed = time.time() - start_time
-        print(
-            f"Iter {iteration:4d}  t={seconds - elapsed:.0f}s  "
-            f"transitions={len(transitions):4d}  "
-        )
+            elapsed = time.time() - start_time
+            print(
+                f"Iter {iteration:4d}  t={seconds - elapsed:.0f}s  "
+                f"transitions={len(transitions):4d}  "
+            )
 
     actor_model.save()
     print(f"Done. {iteration} iterations in {seconds}s. Actor saved.")
@@ -107,7 +107,7 @@ def train(seconds, rollout_steps):
 def main():
     parser = argparse.ArgumentParser(description="Train actor via world model imaginary rollouts.")
     parser.add_argument("--seconds", type=int, default=60, help="Wall-clock budget in seconds")
-    parser.add_argument("--rollout-steps", type=int, default=20, help="Max steps per imaginary episode")
+    parser.add_argument("--rollout-steps", type=int, default=10, help="Max steps per imaginary episode")
     args = parser.parse_args()
 
     train(args.seconds, args.rollout_steps)
