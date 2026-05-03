@@ -3,7 +3,7 @@ import numpy as np
 import os
 import shutil
 import argparse
-from observation import create_observation
+from observation import create_observation, is_failure_state
 from ReplayBuffer import ReplayBuffer
 
 from configuration import POSSIBLE_ACTIONS
@@ -18,7 +18,7 @@ def step_action(action, env):
     elif action == 3:
         action0 = np.array([0.0, -1.0], dtype=np.float32)
     next_state, _, done, truncated, _ = env.step(action0)
-    done = done or truncated
+    done = done or truncated or is_failure_state(next_state)
     next_state = np.concatenate((next_state, [float(done)]))
 
     return next_state, done

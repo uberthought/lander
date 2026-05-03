@@ -76,8 +76,7 @@ class ActorModel:
             print(f"No checkpoint found at {self.model_path}; starting with random weights.")
             self.model.to(self.device)
         
-    def train(self, observations):
-        self.model.train()
+    def _compute_prediction_and_targets(self, observations):
         actions = torch.tensor([int(obs.action) for obs in observations], dtype=torch.long, device=self.device)
         states_0_full = torch.tensor(np.array([obs.prev_state for obs in observations]), dtype=torch.float32, device=self.device)
         states_1_full = torch.tensor(np.array([obs.next_state for obs in observations]), dtype=torch.float32, device=self.device)
@@ -94,12 +93,26 @@ class ActorModel:
         with torch.no_grad():
             q_rewards = self.model(states_1_tile, actions_1_onehot)
             dones = states_1_full[:, 8]
-            future_rewards = q_rewards.squeeze(-1).max(dim=1)[0].unsqueeze(-1) * (1.0 - dones.view(-1, 1))
-            current_rewards = calculate_reward(states_1).view(-1, 1)
-            targets = current_rewards + self.discount_factor * future_rewards
+            future_rewards = q_rewards.squeeze(-1).max(dim=1)[0].unsqueeze(-1)
 
-        self.optimizer.zero_grad()
+            prev_rewards = calculate_reward(states_0_full).view(-1, 1)
+            current_rewards = calculate_reward(states_1_full).view(-1, 1)
+            done_mask = dones.view(-1, 1) > 0.5
+
+            # Not done: shaped reward + discounted future Q.
+            shaping = self.discount_factor * current_rewards - prev_rewards
+            nondone_targets = current_rewards + shaping + self.discount_factor * future_rewards
+
+            # Done: target is the immediate reward, no shaping, no bootstrap.
+            targets = torch.where(done_mask, current_rewards, nondone_targets)
+
         prediction = self.model(states_0, actions_onehot)
+        return prediction, targets
+
+    def train(self, observations):
+        self.model.train()
+        self.optimizer.zero_grad()
+        prediction, targets = self._compute_prediction_and_targets(observations)
         loss = self.criterion(prediction, targets)
         loss.backward()
         self.optimizer.step()

@@ -4,7 +4,7 @@ import numpy as np
 import torch
 from collections import deque
 
-from observation import create_observation, calculate_reward
+from observation import create_observation, calculate_reward, is_failure_state
 from ReplayBuffer import ReplayBuffer
 from world import WorldModel
 from actor import ActorModel
@@ -25,6 +25,8 @@ def _is_done(state, t, max_steps):
     if t >= max_steps:
         return True
     if state[8] >= DONE_THRESHOLD:
+        return True
+    if is_failure_state(state):
         return True
     return False
 

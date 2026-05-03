@@ -15,28 +15,45 @@ def clip_state(state):
     return np.clip(state[..., :6], CLIP_MIN, CLIP_MAX)
 
 
+FAILURE_ANGLE = np.pi / 2  # quarter turn — past this, the ship is considered to have failed
+FAILURE_Y_MIN = -0.5  # below ground / off the bottom of the operational envelope
+FAILURE_Y_MAX = 4.0   # above the operational ceiling
+LANDING_BONUS = 0.5      # per-step bonus when leg(s) on pad
+LANDING_X_RADIUS = 0.3   # x distance from centerline that counts as "on pad"
+
+
+def is_failure_state(state):
+    if abs(float(state[4])) > FAILURE_ANGLE:
+        return True
+    y = float(state[1])
+    if y < FAILURE_Y_MIN or y > FAILURE_Y_MAX:
+        return True
+    return False
+
+
 def calculate_reward(obs):
-    # Normalize observations using the module-level NORMALIZATION_FACTORS
-    # Expect `obs` to be a torch tensor of shape (batch, state_dim)
+    # Expects `obs` to be the full state (batch, 9) or the 6-dim sensor slice.
+    # Clips internally; the leg/x-position bonus needs the full state.
     if not isinstance(obs, torch.Tensor):
         obs = torch.tensor(obs, dtype=torch.float32)
 
-    # Make normalization factors available at module level
     NORMALIZATION_FACTORS = np.array([1, 1.75, 4, 4, 3.1415927, 5], dtype=np.float32)
-    # index 8 is done (0 or 1)
     norm = torch.tensor(NORMALIZATION_FACTORS, dtype=obs.dtype, device=obs.device)
-    obs_norm = obs / norm
-
-    sensors = obs_norm[:, :6]
+    sensors = clip_state(obs) / norm
     sensors = torch.abs(sensors)
     sensors = torch.clamp(sensors, 0, 1)
     sensors = 1.0 - sensors
 
+    position = torch.norm(sensors[:, [0, 1]], dim=1) / np.sqrt(2.0)
+    other = torch.norm(sensors[:, [2, 3, 4, 5]], dim=1) / np.sqrt(4.0)
+    base = position * other
 
-    reward = torch.norm(sensors, dim=1) / np.sqrt(6.0)
-    # reward = torch.norm(sensors[:, [0, 1, 4]], dim=1) / np.sqrt(3.0)
-
-    return reward
+    if obs.shape[-1] >= 8:
+        on_pad = obs[:, 0].abs() < LANDING_X_RADIUS
+        left_bonus = LANDING_BONUS * ((obs[:, 6] > 0.5) & on_pad).float()
+        right_bonus = LANDING_BONUS * ((obs[:, 7] > 0.5) & on_pad).float()
+        return base + left_bonus + right_bonus
+    return base
 
 def create_observation(prev_state, action, next_state):
     return Observation(prev_state, action, next_state)
