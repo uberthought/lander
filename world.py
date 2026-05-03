@@ -7,6 +7,7 @@ import os
 import tempfile
 
 from configuration import POSSIBLE_ACTIONS, LAYER_COUNT, NODE_COUNT, WORLD_LOSS_DELTA
+from observation import clip_state
 
 
 class SkipBlock(nn.Module):
@@ -35,46 +36,30 @@ class WorldNet(nn.Module):
     def __init__(self, action_dim, nodes, layers):
         super().__init__()
         self.layers = layers
-
-        self.location_input = nn.Linear(3, nodes)
-        self.velocity_input = nn.Linear(3, nodes)
+        self.sensors_input = nn.Linear(6, nodes)
         self.action_input = nn.Linear(action_dim, nodes)
         self.skip_layers = nn.ModuleList([SkipBlock(nodes) for _ in range(layers)])
-
-        self.location_output = nn.Sequential(
-            nn.Linear(nodes, 3),
-            nn.Tanh()
-        )
-
-        self.velocity_output = nn.Sequential(
-            nn.Linear(nodes, 3),
-            nn.Tanh()
-        )
+        self.output = nn.Linear(nodes, 6)
 
     def forward(self, state, action):
-        # location is 0, 1, 4 — velocity is 2, 3, 5
-        location = state[..., [0, 1, 4]]
-        velocity = state[..., [2, 3, 5]]
-        x = self.location_input(location) + self.velocity_input(velocity)
-        y = self.action_input(action)
-        x = x + y
+        sensors_embed = self.sensors_input(state)
+        action_embed = self.action_input(action)
+        x = sensors_embed + action_embed
         for i in range(self.layers):
             x = self.skip_layers[i](x)
-        return self.location_output(x), self.velocity_output(x)
+        x = self.output(x)
+        return x
         
-
 
 class WorldModel:
     def __init__(self, model_path="models/world_model.pt"):
         self.model_path = model_path
-        self.possible_actions = POSSIBLE_ACTIONS
 
         self.device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 
-        self.model = WorldNet(self.possible_actions, NODE_COUNT, LAYER_COUNT)
+        self.model = WorldNet(POSSIBLE_ACTIONS, NODE_COUNT, LAYER_COUNT)
         self.optimizer = optim.AdamW(self.model.parameters(), lr=0.001)
         self.criterion = nn.HuberLoss(delta=WORLD_LOSS_DELTA, reduction='none')
-        self.delta_std = torch.ones(6, device=self.device)
 
         if os.path.exists(self.model_path):
             checkpoint = torch.load(self.model_path, map_location="mps" if torch.backends.mps.is_available() else "cpu")
@@ -82,10 +67,6 @@ class WorldModel:
                 self.model.load_state_dict(checkpoint['model_state_dict'])
                 self.model.to(self.device)
                 self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-                if 'delta_std' in checkpoint:
-                    saved = checkpoint['delta_std'].to(self.device)
-                    if saved.shape == self.delta_std.shape:
-                        self.delta_std = saved
                 print(f"Loaded model and optimizer state from {self.model_path}")
             else:
                 # Backward compatibility: support old format (just state_dict)
@@ -97,43 +78,31 @@ class WorldModel:
             self.model.to(self.device)
 
     def train(self, observations):
-        if not observations:
-            return None
-
         self.model.train()
-
         actions = torch.tensor(np.array([int(obs.action) for obs in observations]), dtype=torch.long, device=self.device)
-        states_0_np = np.array([obs.prev_state for obs in observations], dtype=np.float32)
-        states_1_np = np.array([obs.next_state for obs in observations], dtype=np.float32)
-        states_0 = torch.tensor(states_0_np, dtype=torch.float32, device=self.device)
-        states_1 = torch.tensor(states_1_np, dtype=torch.float32, device=self.device)
-        delta = states_1 - states_0
-        delta = delta[:, :6]
+        states_0_full = torch.tensor(np.array([obs.prev_state for obs in observations]), dtype=torch.float32, device=self.device)
+        states_1_full = torch.tensor(np.array([obs.next_state for obs in observations]), dtype=torch.float32, device=self.device)
 
-        actions_hot = F.one_hot(actions, num_classes=self.possible_actions).float()
-        location_target = delta[..., [0, 1, 4]]  # x, y, angle
-        velocity_target = delta[..., [2, 3, 5]]  # vx, vy, va
+        # Terminal/contact transitions produce unpredictable va spikes from collision
+        # impulses the model can't see — filter them out
+        leg_changed = (states_0_full[:, 6:8] != states_1_full[:, 6:8]).any(dim=1)
+        done_transition = states_1_full[:, 8] > 0.5
+        mask = ~(leg_changed | done_transition)
+        actions = actions[mask]
+        states_0 = clip_state(states_0_full[mask])
+        states_1 = clip_state(states_1_full[mask])
+
+        if actions.shape[0] == 0:
+            return
+
+        delta = states_1 - states_0
+        actions_hot = F.one_hot(actions, num_classes=POSSIBLE_ACTIONS).float()
 
         self.optimizer.zero_grad()
-        location_pred, velocity_pred = self.model(states_0, actions_hot)
-
-        location_target_std = location_target.var(dim=0).clamp(min=1e-6).sqrt()
-        location_target_weights = (1.0 / location_target_std)
-        location_target_weights = location_target_weights / location_target_weights.mean()
-
-        velocity_target_std = velocity_target.var(dim=0).clamp(min=1e-6).sqrt()
-        velocity_target_weights = (1.0 / velocity_target_std)
-        velocity_target_weights = velocity_target_weights / velocity_target_weights.mean()
-
-        location_losses = self.criterion(location_pred, location_target)
-        velocity_losses = self.criterion(velocity_pred, velocity_target)
-
-        location_losses = location_losses * location_target_weights
-        velocity_losses = velocity_losses * velocity_target_weights
-
-        loss = location_losses.mean() + velocity_losses.mean()
+        prediction = self.model(states_0, actions_hot)
+        losses = self.criterion(prediction, delta)
+        loss = losses.mean()
         loss.backward()
-
         self.optimizer.step()
 
 
@@ -145,7 +114,6 @@ class WorldModel:
             torch.save({
                 'model_state_dict': self.model.state_dict(),
                 'optimizer_state_dict': self.optimizer.state_dict(),
-                'delta_std': self.delta_std,
             }, tmp_path)
             os.replace(tmp_path, self.model_path)
 
@@ -163,15 +131,12 @@ class WorldModel:
     def predict_batch(self, states, actions):
         self.model.eval()
         with torch.no_grad():
-            states_np = np.array(states, dtype=np.float32)
+            states_np = clip_state(np.array(states, dtype=np.float32))
             state_tensor = torch.tensor(states_np, dtype=torch.float32, device=self.device)
             actions_tensor = torch.tensor(np.array(actions), dtype=torch.long, device=self.device)
-            actions_hot = F.one_hot(actions_tensor, num_classes=self.possible_actions).float()
-            location_delta, velocity_delta = self.model(state_tensor, actions_hot)
-            result = torch.empty((state_tensor.size(0), 6), device=self.device)
-            result[:, [0, 1, 4]] = location_delta
-            result[:, [2, 3, 5]] = velocity_delta
-            return result.cpu().numpy()
+            actions_hot = F.one_hot(actions_tensor, num_classes=POSSIBLE_ACTIONS).float()
+            delta = self.model(state_tensor, actions_hot)
+            return (state_tensor + delta).cpu().numpy()
 
     def predict(self, state, action):
         return self.predict_batch([state], [action])[0]

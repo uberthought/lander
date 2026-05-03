@@ -7,7 +7,7 @@ import os
 import tempfile
 
 from configuration import POSSIBLE_ACTIONS, LAYER_COUNT, NODE_COUNT
-from observation import calculate_reward
+from observation import calculate_reward, clip_state
 
 class SkipBlock(nn.Module):
     def __init__(self, nodes):
@@ -16,6 +16,7 @@ class SkipBlock(nn.Module):
         self.relu1 = nn.LeakyReLU()
         self.block2 = nn.Linear(nodes, nodes)
         self.relu2 = nn.LeakyReLU()
+
     def forward(self, input):
         s = input
         x = input
@@ -33,19 +34,15 @@ class ActorNet(nn.Module):
     def __init__(self, action_dim, nodes, layers):
         super().__init__()
         self.layers = layers
-
-        self.location_input = nn.Linear(3, nodes)
-        self.velocity_input = nn.Linear(3, nodes)
+        self.sensors_input = nn.Linear(6, nodes)
         self.action_input = nn.Linear(action_dim, nodes)
         self.skip_layers = nn.ModuleList([SkipBlock(nodes) for _ in range(layers)])
         self.output = nn.Linear(nodes, 1)
 
     def forward(self, state, action):
-        location = state[..., [0, 1, 4]]
-        velocity = state[..., [2, 3, 5]]
-        x = self.location_input(location) + self.velocity_input(velocity)
-        y = self.action_input(action)
-        x = x + y
+        sensors_embed = self.sensors_input(state)
+        action_embed = self.action_input(action)
+        x = sensors_embed + action_embed
         for i in range(self.layers):
             x = self.skip_layers[i](x)
         x = self.output(x)
@@ -56,7 +53,7 @@ class ActorModel:
     def __init__(self, model_path="models/actor_model.pt"):
         self.model_path = model_path
         self.possible_actions = POSSIBLE_ACTIONS
-        self.discount_factor = 0.95
+        self.discount_factor = 0.97
 
         self.device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
         
@@ -81,10 +78,11 @@ class ActorModel:
         
     def train(self, observations):
         self.model.train()
-
+        actions = torch.tensor([int(obs.action) for obs in observations], dtype=torch.long, device=self.device)
         states_0 = torch.tensor(np.array([obs.prev_state for obs in observations]), dtype=torch.float32, device=self.device)
         states_1 = torch.tensor(np.array([obs.next_state for obs in observations]), dtype=torch.float32, device=self.device)
-        actions = torch.tensor([int(obs.action) for obs in observations], dtype=torch.long, device=self.device)
+        states_0 = clip_state(states_0)
+        states_1 = clip_state(states_1)
 
         actions_onehot = F.one_hot(actions, num_classes=self.possible_actions).float()
 
@@ -101,8 +99,8 @@ class ActorModel:
             targets = current_rewards + self.discount_factor * future_rewards
 
         self.optimizer.zero_grad()
-        outputs = self.model(states_0, actions_onehot)
-        loss = self.criterion(outputs, targets)
+        prediction = self.model(states_0, actions_onehot)
+        loss = self.criterion(prediction, targets)
         loss.backward()
         self.optimizer.step()
 
@@ -130,7 +128,7 @@ class ActorModel:
 
     def get_best_action(self, state):
         self.model.eval()
-        
+        state = clip_state(np.array(state, dtype=np.float32))
         state_tensor = torch.tensor(state, dtype=torch.float32, device=self.device).unsqueeze(0)
         
         actions_1 = torch.arange(self.possible_actions, device=self.device).unsqueeze(-1)
@@ -145,7 +143,7 @@ class ActorModel:
         predicted_rewards = predicted_rewards.view(state_tensor.size(0), self.possible_actions)
 
         probs = F.softmax(predicted_rewards, dim=1)
-        probs = probs * 100
+        probs = probs * 25
         probs = F.softmax(probs, dim=1)
         best_action_index = torch.multinomial(probs, num_samples=1).squeeze(1)
         best_action = actions_1[best_action_index]

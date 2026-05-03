@@ -38,8 +38,9 @@ def _run_imaginary_episode(seed_state, actor_model, world_model, max_steps, epis
     while True:
         t += 1
         action = actor_model.get_best_action(prev_state)
-        delta = world_model.predict(prev_state, action)
-        next_state = _clamp_state(prev_state + delta)
+        next_state = prev_state.copy()
+        next_state[:6] = world_model.predict(prev_state, action)
+        next_state = _clamp_state(next_state)
         done = _is_done(next_state, t, max_steps)
         next_state[8] = float(done)
 
