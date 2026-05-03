@@ -79,10 +79,10 @@ class ActorModel:
     def train(self, observations):
         self.model.train()
         actions = torch.tensor([int(obs.action) for obs in observations], dtype=torch.long, device=self.device)
-        states_0 = torch.tensor(np.array([obs.prev_state for obs in observations]), dtype=torch.float32, device=self.device)
-        states_1 = torch.tensor(np.array([obs.next_state for obs in observations]), dtype=torch.float32, device=self.device)
-        states_0 = clip_state(states_0)
-        states_1 = clip_state(states_1)
+        states_0_full = torch.tensor(np.array([obs.prev_state for obs in observations]), dtype=torch.float32, device=self.device)
+        states_1_full = torch.tensor(np.array([obs.next_state for obs in observations]), dtype=torch.float32, device=self.device)
+        states_0 = clip_state(states_0_full)
+        states_1 = clip_state(states_1_full)
 
         actions_onehot = F.one_hot(actions, num_classes=self.possible_actions).float()
 
@@ -93,7 +93,7 @@ class ActorModel:
 
         with torch.no_grad():
             q_rewards = self.model(states_1_tile, actions_1_onehot)
-            dones = states_1[:, -1]
+            dones = states_1_full[:, 8]
             future_rewards = q_rewards.squeeze(-1).max(dim=1)[0].unsqueeze(-1) * (1.0 - dones.view(-1, 1))
             current_rewards = calculate_reward(states_1).view(-1, 1)
             targets = current_rewards + self.discount_factor * future_rewards
@@ -143,7 +143,7 @@ class ActorModel:
         predicted_rewards = predicted_rewards.view(state_tensor.size(0), self.possible_actions)
 
         probs = F.softmax(predicted_rewards, dim=1)
-        probs = probs * 10
+        probs = probs * 25
         probs = F.softmax(probs, dim=1)
         best_action_index = torch.multinomial(probs, num_samples=1).squeeze(1)
         best_action = actions_1[best_action_index]
