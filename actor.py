@@ -50,18 +50,18 @@ class ActorNet(nn.Module):
 
 
 class ActorModel:
-    def __init__(self, model_path="models/actor_model.pt"):
+    def __init__(self, model_path="models/actor_model.pt", load=True):
         self.model_path = model_path
         self.possible_actions = POSSIBLE_ACTIONS
         self.discount_factor = 0.97
 
         self.device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
-        
+
         self.model = ActorNet(POSSIBLE_ACTIONS, NODE_COUNT, LAYER_COUNT)
         self.optimizer = optim.AdamW(self.model.parameters())
         self.criterion = nn.MSELoss()
 
-        if os.path.exists(self.model_path):
+        if load and os.path.exists(self.model_path):
             checkpoint = torch.load(self.model_path, map_location="mps" if torch.backends.mps.is_available() else "cpu")
             if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint and 'optimizer_state_dict' in checkpoint:
                 self.model.load_state_dict(checkpoint['model_state_dict'])
@@ -73,7 +73,10 @@ class ActorModel:
                 self.model.to(self.device)
                 print(f"Loaded model weights from {self.model_path} (no optimizer state)")
         else:
-            print(f"No checkpoint found at {self.model_path}; starting with random weights.")
+            if load:
+                print(f"No checkpoint found at {self.model_path}; starting with random weights.")
+            else:
+                print(f"Starting fresh actor with random weights (will save to {self.model_path}).")
             self.model.to(self.device)
         
     def _compute_prediction_and_targets(self, observations):

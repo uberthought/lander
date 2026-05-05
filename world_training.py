@@ -2,12 +2,14 @@ import argparse
 import time
 import numpy as np
 import torch
+import gymnasium as gym
 from collections import deque
 
 from observation import create_observation, calculate_reward, is_failure_state
 from ReplayBuffer import ReplayBuffer
 from world import WorldModel
 from actor import ActorModel
+from configuration import POSSIBLE_ACTIONS
 
 LEG_DONE_THRESHOLD = 0.9
 POS_DONE_THRESHOLD = 1.5
@@ -61,11 +63,58 @@ def _run_imaginary_episode(seed_state, actor_model, world_model, max_steps, epis
     return transitions
 
 
-def train(seconds, rollout_steps):
+def _step_action(action, env):
+    if action == 0:
+        action0 = np.array([0.0, 0.0], dtype=np.float32)
+    elif action == 1:
+        action0 = np.array([0.0, 1.0], dtype=np.float32)
+    elif action == 2:
+        action0 = np.array([1.0, 0.0], dtype=np.float32)
+    elif action == 3:
+        action0 = np.array([0.0, -1.0], dtype=np.float32)
+    next_state, _, done, truncated, _ = env.step(action0)
+    done = done or truncated or is_failure_state(next_state)
+    onehot = np.zeros(POSSIBLE_ACTIONS, dtype=np.float32)
+    onehot[action] = 1.0
+    next_state = np.concatenate((next_state, [float(done)], onehot))
+    return next_state, done
+
+
+def _evaluate_in_real_env(actor_model, episodes):
+    env = gym.make("LunarLander-v3", continuous=True)
+    finals = []
+    lengths = []
+    for ep in range(episodes):
+        prev_state, _ = env.reset()
+        prev_state = np.concatenate((prev_state, [0.0, 1.0, 0.0, 0.0, 0.0]))
+        done = False
+        t = 0
+        while not done:
+            t += 1
+            action = actor_model.get_best_action(prev_state)
+            prev_state, done = _step_action(action, env)
+        final = calculate_reward(
+            torch.tensor(prev_state, dtype=torch.float32).unsqueeze(0)
+        ).item()
+        finals.append(final)
+        lengths.append(t)
+        print(f"  eval ep {ep + 1}/{episodes}  steps={t:3d}  final_reward={final:+.4f}")
+    env.close()
+
+    arr = np.array(finals, dtype=np.float32)
+    print(
+        f"Real-env eval over {episodes} episodes: "
+        f"mean={arr.mean():+.4f}  std={arr.std():.4f}  "
+        f"min={arr.min():+.4f}  max={arr.max():+.4f}  "
+        f"avg_len={np.mean(lengths):.1f}"
+    )
+
+
+def train(seconds, rollout_steps, eval_episodes):
     np.set_printoptions(formatter={'float': lambda x: f"{x:+0.4f}"})
 
     world_model = WorldModel()
-    actor_model = ActorModel()
+    actor_model = ActorModel(model_path="models/actor_model_world.pt", load=False)
     replay_buffer = ReplayBuffer()
 
     if len(replay_buffer) == 0:
@@ -106,16 +155,21 @@ def train(seconds, rollout_steps):
             )
 
     actor_model.save()
-    print(f"Done. {iteration} iterations in {seconds}s. Actor saved.")
+    print(f"Done. {iteration} iterations in {seconds}s. Actor saved to {actor_model.model_path}.")
+
+    if eval_episodes > 0:
+        print(f"\nEvaluating fresh-trained actor in real LunarLander-v3 env...")
+        _evaluate_in_real_env(actor_model, eval_episodes)
 
 
 def main():
     parser = argparse.ArgumentParser(description="Train actor via world model imaginary rollouts.")
     parser.add_argument("--seconds", type=int, default=60, help="Wall-clock budget in seconds")
     parser.add_argument("--rollout-steps", type=int, default=10, help="Max steps per imaginary episode")
+    parser.add_argument("--eval-episodes", type=int, default=10, help="Real-env evaluation episodes after training (0 to skip)")
     args = parser.parse_args()
 
-    train(args.seconds, args.rollout_steps)
+    train(args.seconds, args.rollout_steps, args.eval_episodes)
 
 
 if __name__ == "__main__":
