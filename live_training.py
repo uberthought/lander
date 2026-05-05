@@ -40,7 +40,9 @@ def _step_action(action, env):
         action0 = np.array([0.0, -1.0], dtype=np.float32)
     next_state, _, done, truncated, _ = env.step(action0)
     done = done or truncated or is_failure_state(next_state)
-    next_state = np.concatenate((next_state, [float(done)]))
+    onehot = np.zeros(POSSIBLE_ACTIONS, dtype=np.float32)
+    onehot[action] = 1.0
+    next_state = np.concatenate((next_state, [float(done)], onehot))
 
     return next_state, done
 
@@ -68,7 +70,7 @@ def train(env, seconds, train_every_n_episodes, video_folder):
         t = 0
 
         prev_state, _ = env.reset()
-        prev_state = np.concatenate((prev_state, [0.0]))
+        prev_state = np.concatenate((prev_state, [0.0, 1.0, 0.0, 0.0, 0.0]))
 
         do_training = train_every_n_episodes > 0 and episode % train_every_n_episodes == 0
 

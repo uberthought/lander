@@ -18,6 +18,7 @@ def _clamp_state(state):
     state[6] = np.clip(state[6], 0.0, 1.0)
     state[7] = np.clip(state[7], 0.0, 1.0)
     state[8] = np.clip(state[8], 0.0, 1.0)
+    state[9:13] = np.clip(state[9:13], 0.0, 1.0)
     return state
 
 
@@ -45,6 +46,8 @@ def _run_imaginary_episode(seed_state, actor_model, world_model, max_steps, epis
         next_state = _clamp_state(next_state)
         done = _is_done(next_state, t, max_steps)
         next_state[8] = float(done)
+        next_state[9:13] = 0.0
+        next_state[9 + int(action)] = 1.0
 
         transitions.append(create_observation(prev_state, action, next_state))
 

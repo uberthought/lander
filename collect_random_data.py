@@ -19,7 +19,9 @@ def step_action(action, env):
         action0 = np.array([0.0, -1.0], dtype=np.float32)
     next_state, _, done, truncated, _ = env.step(action0)
     done = done or truncated or is_failure_state(next_state)
-    next_state = np.concatenate((next_state, [float(done)]))
+    onehot = np.zeros(POSSIBLE_ACTIONS, dtype=np.float32)
+    onehot[action] = 1.0
+    next_state = np.concatenate((next_state, [float(done)], onehot))
 
     return next_state, done
 
@@ -33,7 +35,7 @@ def collect(env, episodes, video_folder):
         done = False
         truncated = False
         prev_state, _ = env.reset()
-        prev_state = np.concatenate((prev_state, [0.0]))
+        prev_state = np.concatenate((prev_state, [0.0, 1.0, 0.0, 0.0, 0.0]))
 
         while not done and not truncated:
             action = np.random.randint(0, POSSIBLE_ACTIONS)

@@ -156,7 +156,7 @@ class ActorModel:
         predicted_rewards = predicted_rewards.view(state_tensor.size(0), self.possible_actions)
 
         probs = F.softmax(predicted_rewards, dim=1)
-        probs = probs * 25
+        probs = probs * 100
         probs = F.softmax(probs, dim=1)
         best_action_index = torch.multinomial(probs, num_samples=1).squeeze(1)
         best_action = actions_1[best_action_index]
