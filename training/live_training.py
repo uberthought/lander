@@ -55,11 +55,6 @@ def train(env, seconds, train_every_n_episodes, video_folder):
     replay_buffer0 = deque(maxlen=40000)
     validation_sample = replay_buffer.sample(VALIDATION_SAMPLE_SIZE)
 
-    # remove the videos folder
-    shutil.rmtree(video_folder, ignore_errors=True)
-            
-    os.makedirs(video_folder, exist_ok=True)
-
     start_time = time.time()
     episode = 0
     while time.time() - start_time < seconds:
@@ -154,6 +149,8 @@ def main():
     train_every = parser.parse_args().train_every
 
     np.set_printoptions(formatter={'float': lambda x: "{0:+0.4f}".format(x)})
+
+    shutil.rmtree("./videos", ignore_errors=True)
 
     env = gym.make("LunarLander-v3", continuous=True, render_mode="rgb_array")
     env = RecordVideo(env, video_folder="./videos", episode_trigger=lambda x: True, disable_logger=True)

@@ -14,7 +14,6 @@ from shared.observation import calculate_reward
 
 def play(model_path, episodes, video_folder):
     shutil.rmtree(video_folder, ignore_errors=True)
-    os.makedirs(video_folder, exist_ok=True)
 
     env = gym.make("LunarLander-v3", continuous=True, render_mode="rgb_array")
     env = RecordVideo(env, video_folder=video_folder, episode_trigger=lambda x: True, disable_logger=True)
