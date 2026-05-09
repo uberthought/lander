@@ -37,7 +37,7 @@ class QNet(nn.Module):
         self.sensors_input = nn.Linear(STATE_SIZE, nodes)
         self.action_input = nn.Linear(action_dim, nodes)
         self.skip_layers = nn.ModuleList([SkipBlock(nodes) for _ in range(layers)])
-        self.output = nn.Linear(nodes, CONTINUOUS_STATE_DIM + 1)
+        self.output = nn.Linear(nodes, STATE_SIZE + 1)
 
     def forward(self, state, action):
         x = self.sensors_input(state) + self.action_input(action)
@@ -75,12 +75,12 @@ class QModel:
                 print(f"Starting fresh QModel with random weights (will save to {self.model_path}).")
             self.model.to(self.device)
 
-    def _full_q_from_heads(self, base_states_continuous, heads):
-        # base_states_continuous: (..., 6); heads: (..., 7) — last dim is [delta(6), q_rest(1)]
-        delta = heads[..., :CONTINUOUS_STATE_DIM]
-        q_rest = heads[..., CONTINUOUS_STATE_DIM]
-        predicted_next = base_states_continuous + delta
-        flat = predicted_next.reshape(-1, CONTINUOUS_STATE_DIM)
+    def _full_q_from_heads(self, base_states_full, heads):
+        # base_states_full: (..., 13); heads: (..., 14) — last dim is [delta(13), q_rest(1)]
+        delta = heads[..., :STATE_SIZE]
+        q_rest = heads[..., STATE_SIZE]
+        predicted_next = base_states_full + delta
+        flat = predicted_next.reshape(-1, STATE_SIZE)
         rewards = calculate_reward(flat).reshape(predicted_next.shape[:-1])
         return rewards + q_rest
 
@@ -99,9 +99,9 @@ class QModel:
         states_1_tile = states_1.unsqueeze(1).repeat(1, self.possible_actions, 1)
 
         with torch.no_grad():
-            next_heads = self.model(states_1_tile, actions_1_onehot)  # (B, A, 7)
-            next_states_continuous = states_1[:, :CONTINUOUS_STATE_DIM].unsqueeze(1).expand(-1, self.possible_actions, -1)
-            next_full_q = self._full_q_from_heads(next_states_continuous, next_heads)  # (B, A)
+            next_heads = self.model(states_1_tile, actions_1_onehot)  # (B, A, 14)
+            next_states_full = states_1.unsqueeze(1).expand(-1, self.possible_actions, -1)
+            next_full_q = self._full_q_from_heads(next_states_full, next_heads)  # (B, A)
             future_rewards = next_full_q.max(dim=1)[0].unsqueeze(-1)
 
             prev_rewards = calculate_reward(states_0_full).view(-1, 1)
@@ -112,8 +112,8 @@ class QModel:
             nondone_q_rest = shaping + self.discount_factor * future_rewards
             q_rest_targets = torch.where(done_mask, torch.zeros_like(nondone_q_rest), nondone_q_rest)
 
-            delta_targets = (states_1 - states_0)[:, :CONTINUOUS_STATE_DIM]
-            targets = torch.cat([delta_targets, q_rest_targets], dim=-1)
+            delta_targets = states_1 - states_0  # (B, 13)
+            targets = torch.cat([delta_targets, q_rest_targets], dim=-1)  # (B, 14)
 
             leg_changed = (states_0_full[:, 6:8] != states_1_full[:, 6:8]).any(dim=1)
             done_row = states_1_full[:, 8] > 0.5
@@ -130,20 +130,20 @@ class QModel:
         sq_err = (prediction - targets) ** 2
         var = targets.var(dim=0, unbiased=False).clamp(min=1e-6)
 
-        # Q-rest entry: standard mean / variance.
-        q_mse = sq_err[:, CONTINUOUS_STATE_DIM].mean()
-        q_loss = q_mse / var[CONTINUOUS_STATE_DIM]
+        # Q-rest entry (last column): standard mean / variance.
+        q_mse = sq_err[:, STATE_SIZE].mean()
+        q_loss = q_mse / var[STATE_SIZE]
 
-        # Delta entries: masked mean / masked variance.
+        # Delta entries (all 13 dims): masked mean / masked variance.
         mask_f = delta_mask.float().unsqueeze(-1)
         denom = mask_f.sum().clamp(min=1.0)
-        delta_sq = sq_err[:, :CONTINUOUS_STATE_DIM] * mask_f
-        delta_mse = delta_sq.sum(dim=0) / denom  # (6,)
+        delta_sq = sq_err[:, :STATE_SIZE] * mask_f
+        delta_mse = delta_sq.sum(dim=0) / denom  # (13,)
         if delta_mask.any():
-            masked_targets = targets[delta_mask][:, :CONTINUOUS_STATE_DIM]
+            masked_targets = targets[delta_mask][:, :STATE_SIZE]
             delta_var = masked_targets.var(dim=0, unbiased=False).clamp(min=1e-6)
         else:
-            delta_var = var[:CONTINUOUS_STATE_DIM]
+            delta_var = var[:STATE_SIZE]
         delta_loss = (delta_mse / delta_var).sum()
 
         loss = q_loss + delta_loss
@@ -176,8 +176,7 @@ class QModel:
 
         with torch.no_grad():
             heads = self.model(state_expanded, actions_1_onehot)
-            base = state_expanded[..., :CONTINUOUS_STATE_DIM]
-            full_q = self._full_q_from_heads(base, heads)  # (1, A)
+            full_q = self._full_q_from_heads(state_expanded, heads)  # (1, A)
 
         probs = F.softmax(full_q, dim=1)
         probs = F.softmax(probs * 100, dim=1)

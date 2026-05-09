@@ -10,7 +10,7 @@ from collections import deque
 from shared.observation import create_observation, is_failure_state, calculate_reward
 from shared.ReplayBuffer import ReplayBuffer
 from model.qmodel import QModel
-from .offline_training import print_q_snr
+from .offline_training import print_q_snr, print_q_action_breakdown
 from .live_training import _step_action
 
 import time
@@ -65,6 +65,7 @@ def train(env, seconds, train_every_n_episodes, sample_multiplier, video_folder)
 
         if do_training:
             print_q_snr(q_model, replay_buffer0, remain_time=seconds - (time.time() - start_time))
+            # print_q_action_breakdown(q_model, list(replay_buffer0))
 
             replay_buffer0 = list(replay_buffer0)
             sample_len = len(replay_buffer0) * sample_multiplier
