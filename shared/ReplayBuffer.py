@@ -3,7 +3,7 @@ from typing import List, Tuple
 import random
 import numpy as np
 
-from configuration import STATE_SIZE
+from shared.configuration import STATE_SIZE
 
 class ReplayBuffer:
     """Memory-mapped cyclic buffer with automatic disk persistence.
@@ -15,7 +15,7 @@ class ReplayBuffer:
     def __init__(self, maxlen: int | None = None, filename: str | None = None, compress: bool = True):
         self.max_episode = 0
         self.maxlen = maxlen or 2**22 # 
-        self.filename = filename or "replay_buffer.dat"
+        self.filename = filename or "data/replay_buffer.dat"
         self.compress = compress  # kept for compatibility, not used with memmap
         self.state_shape = (STATE_SIZE,)
         self.action_shape = (1,)

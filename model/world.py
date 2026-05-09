@@ -6,8 +6,8 @@ import numpy as np
 import os
 import tempfile
 
-from configuration import POSSIBLE_ACTIONS, LAYER_COUNT, NODE_COUNT, WORLD_LOSS_DELTA
-from observation import clip_state
+from shared.configuration import POSSIBLE_ACTIONS, LAYER_COUNT, NODE_COUNT, WORLD_LOSS_DELTA
+from shared.observation import clip_state
 
 
 class SkipBlock(nn.Module):
@@ -52,7 +52,7 @@ class WorldNet(nn.Module):
         
 
 class WorldModel:
-    def __init__(self, model_path="models/world_model.pt"):
+    def __init__(self, model_path="checkpoints/world_model.pt"):
         self.model_path = model_path
 
         self.device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")

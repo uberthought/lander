@@ -7,25 +7,25 @@ This file provides essential guidance for AI coding agents working in this codeb
 ## Build and Test Commands
 
 - **Collect random data:**
-  - `python3 collect_random_data.py --episodes 1024`
+  - `python3 -m training.collect_random_data --episodes 1024`
 - **Offline training:**
-  - `python3 training.py --seconds 60`
+  - `python3 -m training.offline_training --seconds 60`
 - **Live training (with environment interaction):**
-  - `python3 live_training.py --seconds 600`
+  - `python3 -m training.live_training --seconds 600`
 - **Unit tests:**
-  - See [test_ReplayBuffer.py](test_ReplayBuffer.py); tests are functions, not auto-discovered.
+  - See [tests/test_ReplayBuffer.py](tests/test_ReplayBuffer.py); tests are functions, not auto-discovered.
 
 ---
 
 ## Architecture Overview
 
-- **ActorModel ([actor.py](actor.py))**: Predicts Q-values for all 2-action combinations using a skip-block neural net.
-- **WorldModel ([world.py](world.py))**: Predicts next-state deltas given state and action.
-- **ReplayBuffer ([ReplayBuffer.py](ReplayBuffer.py))**: Memory-mapped, atomic, circular buffer for experience replay.
+- **ActorModel ([model/actor.py](model/actor.py))**: Predicts Q-values for all 2-action combinations using a skip-block neural net.
+- **WorldModel ([model/world.py](model/world.py))**: Predicts next-state deltas given state and action.
+- **ReplayBuffer ([shared/ReplayBuffer.py](shared/ReplayBuffer.py))**: Memory-mapped, atomic, circular buffer for experience replay.
 - **Data Flow:**
-  1. `collect_random_data.py` → ReplayBuffer
-  2. `training.py` → trains ActorModel & WorldModel
-  3. `live_training.py` → on-policy data collection & training
+  1. `training/collect_random_data.py` → ReplayBuffer
+  2. `training/offline_training.py` → trains ActorModel & WorldModel
+  3. `training/live_training.py` → on-policy data collection & training
 
 ---
 
@@ -36,7 +36,7 @@ This file provides essential guidance for AI coding agents working in this codeb
 - **Neural net:** 4 skip blocks, 64 nodes/layer, LeakyReLU, AdamW, MSELoss
 - **Device:** Uses MPS if available, else CPU
 - **Persistence:** Atomic file saves for buffer and metadata
-- **Config:** All constants in [configuration.py](configuration.py)
+- **Config:** All constants in [shared/configuration.py](shared/configuration.py)
 
 ---
 
@@ -53,11 +53,11 @@ This file provides essential guidance for AI coding agents working in this codeb
 
 ## Key Files
 
-- [configuration.py](configuration.py): Central config
-- [ReplayBuffer.py](ReplayBuffer.py): Persistence, sampling
-- [actor.py](actor.py), [world.py](world.py): Model patterns
-- [observation.py](observation.py): Reward and observation tuple
-- [live_training.py](live_training.py): Training loop, SNR, video
+- [shared/configuration.py](shared/configuration.py): Central config
+- [shared/ReplayBuffer.py](shared/ReplayBuffer.py): Persistence, sampling
+- [model/actor.py](model/actor.py), [model/world.py](model/world.py): Model patterns
+- [shared/observation.py](shared/observation.py): Reward and observation tuple
+- [training/live_training.py](training/live_training.py): Training loop, SNR, video
 
 ---
 

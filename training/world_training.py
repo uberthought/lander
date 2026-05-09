@@ -5,11 +5,11 @@ import torch
 import gymnasium as gym
 from collections import deque
 
-from observation import create_observation, calculate_reward, is_failure_state
-from ReplayBuffer import ReplayBuffer
-from world import WorldModel
-from actor import ActorModel
-from configuration import POSSIBLE_ACTIONS
+from shared.observation import create_observation, calculate_reward, is_failure_state
+from shared.ReplayBuffer import ReplayBuffer
+from model.world import WorldModel
+from model.actor import ActorModel
+from shared.configuration import POSSIBLE_ACTIONS
 
 LEG_DONE_THRESHOLD = 0.9
 POS_DONE_THRESHOLD = 1.5
@@ -114,7 +114,7 @@ def train(seconds, rollout_steps, eval_episodes):
     np.set_printoptions(formatter={'float': lambda x: f"{x:+0.4f}"})
 
     world_model = WorldModel()
-    actor_model = ActorModel(model_path="models/actor_model_world.pt", load=False)
+    actor_model = ActorModel(model_path="checkpoints/actor_model_world.pt", load=False)
     replay_buffer = ReplayBuffer()
 
     if len(replay_buffer) == 0:

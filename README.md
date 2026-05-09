@@ -28,16 +28,18 @@ This repository implements a deep reinforcement learning (RL) agent for the Luna
 - **Video recording**: Live training saves episode videos
 
 ## Project Structure
-- `actor.py` — Actor model (Q-value predictor)
-- `world.py` — World model (next-state predictor)
-- `ReplayBuffer.py` — Experience replay buffer
-- `observation.py` — Reward calculation and observation container
-- `training.py` — Offline training script
-- `live_training.py` — Live training with environment interaction
-- `collect_random_data.py` — Collects random experience for buffer seeding
-- `configuration.py` — Central configuration constants
-- `test_ReplayBuffer.py` — Unit tests for the replay buffer
-- `models/` — Saved model weights
+- `model/actor.py` — Actor model (Q-value predictor)
+- `model/world.py` — World model (next-state predictor)
+- `shared/ReplayBuffer.py` — Experience replay buffer
+- `shared/observation.py` — Reward calculation and observation container
+- `training/offline_training.py` — Offline training script
+- `training/live_training.py` — Live training with environment interaction
+- `training/world_training.py` — World-model imagination training
+- `training/actor_training.py` — Actor training utilities
+- `training/collect_random_data.py` — Collects random experience for buffer seeding
+- `shared/configuration.py` — Central configuration constants
+- `tests/test_ReplayBuffer.py` — Unit tests for the replay buffer
+- `checkpoints/` — Saved model weights
 - `videos/` — Saved episode videos
 
 ## Setup
@@ -50,24 +52,13 @@ This repository implements a deep reinforcement learning (RL) agent for the Luna
    - Uses MPS if available, otherwise CPU
 
 ## Usage
-### Collect Random Data
 ```
-python3 collect_random_data.py --episodes 1024
-```
-
-### Offline Training
-```
-python3 training.py --seconds 60
-```
-
-### Live Training (with environment interaction)
-```
-python3 live_training.py --seconds 600
-```
-
-### Run ReplayBuffer Tests
-```
-python3 test_ReplayBuffer.py
+python3 -m training.collect_random_data --episodes 1024
+python3 -m training.offline_training --seconds 60
+python3 -m training.live_training --seconds 600 --train-every 4
+python3 -m training.actor_training --seconds 60 --train-every 4
+python3 -m training.world_training --seconds 60 --rollout-steps 10
+python3 -m tests.test_ReplayBuffer
 ```
 
 ## Architecture
@@ -75,7 +66,7 @@ python3 test_ReplayBuffer.py
 - **Actions**: 2 simultaneous, 4 options each (16 combos, one-hot encoded)
 - **Neural Net**: 4 skip blocks, 64 nodes/layer, LeakyReLU, AdamW, MSELoss
 - **Persistence**: Atomic file saves for buffer and metadata
-- **Config**: All constants in `configuration.py`
+- **Config**: All constants in `shared/configuration.py`
 
 ## Common Pitfalls
 - Device mismatch (CPU/MPS)

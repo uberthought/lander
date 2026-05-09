@@ -127,9 +127,7 @@ mypy.ini
 # Pyre type checker
 .pyre/
 
-replay_buffer.dat
-replay_buffer.dat.meta.npz
-
-models/
+data/
+checkpoints/
 videos/
 .DS_Store

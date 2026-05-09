@@ -6,8 +6,8 @@ import numpy as np
 import os
 import tempfile
 
-from configuration import POSSIBLE_ACTIONS, LAYER_COUNT, NODE_COUNT
-from observation import calculate_reward, clip_state
+from shared.configuration import POSSIBLE_ACTIONS, LAYER_COUNT, NODE_COUNT
+from shared.observation import calculate_reward, clip_state
 
 class SkipBlock(nn.Module):
     def __init__(self, nodes):
@@ -50,7 +50,7 @@ class ActorNet(nn.Module):
 
 
 class ActorModel:
-    def __init__(self, model_path="models/actor_model.pt", load=True):
+    def __init__(self, model_path="checkpoints/actor_model.pt", load=True):
         self.model_path = model_path
         self.possible_actions = POSSIBLE_ACTIONS
         self.discount_factor = 0.97

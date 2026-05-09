@@ -1,9 +1,9 @@
 import numpy as np
 import argparse
 
-from ReplayBuffer import ReplayBuffer
-from actor import ActorModel
-# from world import WorldModel
+from shared.ReplayBuffer import ReplayBuffer
+from model.actor import ActorModel
+# from model.world import WorldModel
 
 def compute_validation_snr(world_model, validation_sample):
     states_0 = np.array([obs.prev_state for obs in validation_sample], dtype=np.float32)

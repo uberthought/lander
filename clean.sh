@@ -1,3 +1,3 @@
-rm models/*
+rm checkpoints/*
 rm videos/*
-rm replay_buffer.dat*
+rm data/replay_buffer.dat*

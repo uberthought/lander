@@ -7,18 +7,29 @@ import shutil
 import argparse
 from collections import deque
 
-from observation import create_observation, is_failure_state, calculate_reward, clip_state
-from ReplayBuffer import ReplayBuffer
-from world import WorldModel
-from actor import ActorModel
-from training import print_snr
+from shared.observation import create_observation, is_failure_state, calculate_reward, clip_state
+from shared.ReplayBuffer import ReplayBuffer
+from model.actor import ActorModel
 
 import time
 
-from configuration import POSSIBLE_ACTIONS
+from shared.configuration import POSSIBLE_ACTIONS
 
 CONTINUOUS_STATE_DIM = 6
 VALIDATION_SAMPLE_SIZE = 2 ** 10
+
+def print_actor_snr(actor_model, sample, remain_time=None):
+    actor_model.model.eval()
+    with torch.no_grad():
+        prediction, targets = actor_model._compute_prediction_and_targets(sample)
+    pred = prediction.squeeze(-1)
+    tgt = targets.squeeze(-1)
+    signal = (tgt ** 2).mean().item()
+    noise = ((tgt - pred) ** 2).mean().item()
+    snr = 0.0 if noise == 0 or signal == 0 else 10 * np.log10(signal / noise)
+    prefix = f"Iter t={remain_time:.0f}s " if remain_time is not None else ""
+    print(f"{prefix}Actor SNR={snr:.1f} dB  Q^={pred.mean().item():+.3f}  Q*={tgt.mean().item():+.3f}")
+
 
 def _compute_snr(state, predicted):
     state = state[:CONTINUOUS_STATE_DIM]
@@ -47,7 +58,6 @@ def _step_action(action, env):
     return next_state, done
 
 def train(env, seconds, train_every_n_episodes, video_folder):
-    world_model = WorldModel()
     actor_model = ActorModel()
 
     # Main long-term buffer (persistent) and recent buffer for on-policy-ish updates
@@ -121,21 +131,22 @@ def train(env, seconds, train_every_n_episodes, video_folder):
         # if it's time to train the model, do so
 
         if do_training:
-            print_snr(world_model, replay_buffer0, remain_time=seconds - (time.time() - start_time))
 
             replay_buffer0 = list(replay_buffer0)
             sample_len = len(replay_buffer0) * 4
+
+            print(f"Training on {len(replay_buffer0)} recent samples and {sample_len} random samples from the main buffer...")
+            print_actor_snr(actor_model, replay_buffer0, remain_time=seconds - (time.time() - start_time))
 
             start_train_time = time.time()
             i = 0
             while time.time() - start_train_time < 10:
                 training_sample = replay_buffer.sample(sample_len) + replay_buffer0
-                world_model.train(training_sample)
                 actor_model.train(training_sample)
                 i += 1
 
-            world_model.save()
             actor_model.save()
+            print_actor_snr(actor_model, replay_buffer0, remain_time=seconds - (time.time() - start_time))
 
             try:
                 replay_buffer.save()

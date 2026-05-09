@@ -7,9 +7,9 @@ import numpy as np
 import torch
 from gymnasium.wrappers import RecordVideo
 
-from actor import ActorModel
-from live_training import _step_action
-from observation import calculate_reward
+from model.actor import ActorModel
+from training.live_training import _step_action
+from shared.observation import calculate_reward
 
 
 def play(model_path, episodes, video_folder):
@@ -62,7 +62,7 @@ def main():
     parser = argparse.ArgumentParser(description="Run a saved actor checkpoint on LunarLander-v3 and record video.")
     parser.add_argument("--episodes", type=int, default=10, help="Number of episodes to record")
     parser.add_argument("--video-folder", type=str, default="./videos", help="Folder to write MP4 files to")
-    parser.add_argument("--model-path", type=str, default="models/actor_model_world.pt", help="Path to actor checkpoint")
+    parser.add_argument("--model-path", type=str, default="checkpoints/actor_model_world.pt", help="Path to actor checkpoint")
     args = parser.parse_args()
 
     np.set_printoptions(formatter={'float': lambda x: "{0:+0.4f}".format(x)})

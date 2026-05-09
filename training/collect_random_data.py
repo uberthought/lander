@@ -3,10 +3,10 @@ import numpy as np
 import os
 import shutil
 import argparse
-from observation import create_observation, is_failure_state
-from ReplayBuffer import ReplayBuffer
+from shared.observation import create_observation, is_failure_state
+from shared.ReplayBuffer import ReplayBuffer
 
-from configuration import POSSIBLE_ACTIONS
+from shared.configuration import POSSIBLE_ACTIONS
 
 def step_action(action, env):
     if action == 0:
