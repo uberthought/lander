@@ -52,7 +52,7 @@ def main():
     np.set_printoptions(formatter={'float': lambda x: "{0:+0.4f}".format(x)})
 
     replay_buffer = ReplayBuffer()
-    # world_model = WorldModel()
+    world_model = WorldModel()
     actor_model = ActorModel()
 
     import time
@@ -64,16 +64,16 @@ def main():
         training_sample = fixed_sample if fixed_sample is not None else replay_buffer.sample(2**sample_size)
 
         actor_model.train(training_sample)
-        # world_model.train(training_sample)
+        world_model.train(training_sample)
         
         i += 1
 
         # save every 10 iterations
         if i % 10 == 0:
             actor_model.save()
-            # world_model.save()
+            world_model.save()
 
-            # print_snr(world_model, training_sample, remain_time=remaining_time)
+            print_snr(world_model, training_sample, remain_time=remaining_time)
 
 if __name__ == "__main__":
     main()
