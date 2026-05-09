@@ -76,7 +76,7 @@ training/collect_random_data.py → ReplayBuffer (replay_buffer.dat, memmap, ~36
 
 | Constant | Value | Location | Meaning |
 |----------|-------|----------|---------|
-| `STATE_SIZE` | 9 | `shared/configuration.py` | Dimensions of state vector |
+| `STATE_SIZE` | 13 | `shared/configuration.py` | Dimensions of state vector |
 | `POSSIBLE_ACTIONS` | 4 | `shared/configuration.py` | Options per action slot |
 | `LAYER_COUNT` | 4 | `shared/configuration.py` | Number of skip blocks |
 | `NODE_COUNT` | 64 | `shared/configuration.py` | Width of hidden layers |

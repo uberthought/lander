@@ -116,7 +116,7 @@ def train(env, seconds, train_every_n_episodes, video_folder):
         # if it's time to train the model, do so
 
         if do_training:
-            print_snr(world_model, replay_buffer0, remain_time=seconds - (time.time() - start_time))
+            print_snr(world_model, replay_buffer0, remain_time=seconds - (time.time() - start_time), actor_model=actor_model)
 
             replay_buffer0 = list(replay_buffer0)
             sample_len = len(replay_buffer0) * 4

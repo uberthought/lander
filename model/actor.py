@@ -6,7 +6,7 @@ import numpy as np
 import os
 import tempfile
 
-from shared.configuration import POSSIBLE_ACTIONS, LAYER_COUNT, NODE_COUNT
+from shared.configuration import POSSIBLE_ACTIONS, LAYER_COUNT, NODE_COUNT, STATE_SIZE
 from shared.observation import calculate_reward, clip_state
 
 class SkipBlock(nn.Module):
@@ -34,10 +34,11 @@ class ActorNet(nn.Module):
     def __init__(self, action_dim, nodes, layers):
         super().__init__()
         self.layers = layers
-        self.sensors_input = nn.Linear(6, nodes)
+        self.sensors_input = nn.Linear(STATE_SIZE, nodes)
         self.action_input = nn.Linear(action_dim, nodes)
         self.skip_layers = nn.ModuleList([SkipBlock(nodes) for _ in range(layers)])
-        self.output = nn.Linear(nodes, 1)
+        # Output heads: [immediate reward, Q-value]
+        self.output = nn.Linear(nodes, 2)
 
     def forward(self, state, action):
         sensors_embed = self.sensors_input(state)
@@ -94,20 +95,24 @@ class ActorModel:
         states_1_tile = states_1.unsqueeze(1).repeat(1, self.possible_actions, 1)
 
         with torch.no_grad():
-            q_rewards = self.model(states_1_tile, actions_1_onehot)
+            next_heads = self.model(states_1_tile, actions_1_onehot)  # (B, A, 2)
             dones = states_1_full[:, 8]
-            future_rewards = q_rewards.squeeze(-1).max(dim=1)[0].unsqueeze(-1)
+            # Full Q at next state = immediate-R head + Q-rest head
+            next_full_q = next_heads[..., 0] + next_heads[..., 1]
+            future_rewards = next_full_q.max(dim=1)[0].unsqueeze(-1)
 
             prev_rewards = calculate_reward(states_0_full).view(-1, 1)
             current_rewards = calculate_reward(states_1_full).view(-1, 1)
             done_mask = dones.view(-1, 1) > 0.5
 
-            # Not done: shaped reward + discounted future Q.
+            # Q-rest target = shaped reward + discounted future Q (excluding immediate).
             shaping = self.discount_factor * current_rewards - prev_rewards
-            nondone_targets = current_rewards + shaping + self.discount_factor * future_rewards
+            nondone_q_rest = shaping + self.discount_factor * future_rewards
 
-            # Done: target is the immediate reward, no shaping, no bootstrap.
-            targets = torch.where(done_mask, current_rewards, nondone_targets)
+            # Done: no future, no shaping. R-head covers the terminal reward; Q-rest = 0.
+            q_rest_targets = torch.where(done_mask, torch.zeros_like(nondone_q_rest), nondone_q_rest)
+            r_targets = current_rewards
+            targets = torch.cat([r_targets, q_rest_targets], dim=-1)
 
         prediction = self.model(states_0, actions_onehot)
         return prediction, targets
@@ -116,7 +121,9 @@ class ActorModel:
         self.model.train()
         self.optimizer.zero_grad()
         prediction, targets = self._compute_prediction_and_targets(observations)
-        loss = self.criterion(prediction, targets)
+        per_head_mse = ((prediction - targets) ** 2).mean(dim=0)
+        per_head_var = targets.var(dim=0, unbiased=False).clamp(min=1e-6)
+        loss = (per_head_mse / per_head_var).sum()
         loss.backward()
         self.optimizer.step()
 
@@ -155,7 +162,8 @@ class ActorModel:
         state_expanded = state_tensor.unsqueeze(1).repeat(1, self.possible_actions, 1)
 
         with torch.no_grad():
-            predicted_rewards = self.model(state_expanded, actions_1_onehot)
+            heads = self.model(state_expanded, actions_1_onehot)
+            predicted_rewards = heads[..., 0] + heads[..., 1]
         predicted_rewards = predicted_rewards.view(state_tensor.size(0), self.possible_actions)
 
         probs = F.softmax(predicted_rewards, dim=1)

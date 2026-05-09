@@ -1,4 +1,5 @@
 STATE_SIZE = 13 # Size of the state vector: 8 from env + done + 4 one-hot prev action
+CONTINUOUS_STATE_DIM = 6 # Continuous sensor dims (x, y, vx, vy, angle, vangle)
 POSSIBLE_ACTIONS = 4 # Number of possible actions per step
 
 LAYER_COUNT = 16 # Number of layers in the model

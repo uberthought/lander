@@ -11,8 +11,10 @@ def clip_state(state):
     if isinstance(state, torch.Tensor):
         mins = torch.tensor(CLIP_MIN, dtype=state.dtype, device=state.device)
         maxs = torch.tensor(CLIP_MAX, dtype=state.dtype, device=state.device)
-        return torch.clamp(state[..., :6], mins, maxs)
-    return np.clip(state[..., :6], CLIP_MIN, CLIP_MAX)
+        clipped = torch.clamp(state[..., :6], mins, maxs)
+        return torch.cat([clipped, state[..., 6:]], dim=-1)
+    clipped = np.clip(state[..., :6], CLIP_MIN, CLIP_MAX)
+    return np.concatenate([clipped, state[..., 6:]], axis=-1)
 
 
 FAILURE_ANGLE = np.pi / 2  # quarter turn — past this, the ship is considered to have failed
@@ -39,7 +41,7 @@ def calculate_reward(obs):
 
     NORMALIZATION_FACTORS = np.array([1, 1.75, 4, 4, 3.1415927, 5], dtype=np.float32)
     norm = torch.tensor(NORMALIZATION_FACTORS, dtype=obs.dtype, device=obs.device)
-    sensors = clip_state(obs) / norm
+    sensors = clip_state(obs)[..., :6] / norm
     sensors = torch.abs(sensors)
     sensors = torch.clamp(sensors, 0, 1)
     sensors = 1.0 - sensors

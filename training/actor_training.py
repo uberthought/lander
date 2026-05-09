@@ -22,13 +22,20 @@ def print_actor_snr(actor_model, sample, remain_time=None):
     actor_model.model.eval()
     with torch.no_grad():
         prediction, targets = actor_model._compute_prediction_and_targets(sample)
-    pred = prediction.squeeze(-1)
-    tgt = targets.squeeze(-1)
-    signal = (tgt ** 2).mean().item()
-    noise = ((tgt - pred) ** 2).mean().item()
-    snr = 0.0 if noise == 0 or signal == 0 else 10 * np.log10(signal / noise)
+
+    def _snr(pred, tgt):
+        signal = (tgt ** 2).mean().item()
+        noise = ((tgt - pred) ** 2).mean().item()
+        return 0.0 if noise == 0 or signal == 0 else 10 * np.log10(signal / noise)
+
+    r_pred, r_tgt = prediction[:, 0], targets[:, 0]
+    q_pred, q_tgt = prediction[:, 1], targets[:, 1]
     prefix = f"Iter t={remain_time:.0f}s " if remain_time is not None else ""
-    print(f"{prefix}Actor SNR={snr:.1f} dB  Q^={pred.mean().item():+.3f}  Q*={tgt.mean().item():+.3f}")
+    print(
+        f"{prefix}"
+        f"Actor-R SNR={_snr(r_pred, r_tgt):.1f} dB  R^={r_pred.mean().item():+.3f}  R*={r_tgt.mean().item():+.3f} | "
+        f"Actor-Q SNR={_snr(q_pred, q_tgt):.1f} dB  Q^={q_pred.mean().item():+.3f}  Q*={q_tgt.mean().item():+.3f}"
+    )
 
 
 def _compute_snr(state, predicted):

@@ -6,7 +6,7 @@ import numpy as np
 import os
 import tempfile
 
-from shared.configuration import POSSIBLE_ACTIONS, LAYER_COUNT, NODE_COUNT, WORLD_LOSS_DELTA
+from shared.configuration import POSSIBLE_ACTIONS, LAYER_COUNT, NODE_COUNT, WORLD_LOSS_DELTA, STATE_SIZE, CONTINUOUS_STATE_DIM
 from shared.observation import clip_state
 
 
@@ -36,7 +36,7 @@ class WorldNet(nn.Module):
     def __init__(self, action_dim, nodes, layers):
         super().__init__()
         self.layers = layers
-        self.sensors_input = nn.Linear(6, nodes)
+        self.sensors_input = nn.Linear(STATE_SIZE, nodes)
         self.action_input = nn.Linear(action_dim, nodes)
         self.skip_layers = nn.ModuleList([SkipBlock(nodes) for _ in range(layers)])
         self.output = nn.Linear(nodes, 6)
@@ -95,7 +95,7 @@ class WorldModel:
         if actions.shape[0] == 0:
             return
 
-        delta = states_1 - states_0
+        delta = (states_1 - states_0)[:, :CONTINUOUS_STATE_DIM]
         actions_hot = F.one_hot(actions, num_classes=POSSIBLE_ACTIONS).float()
 
         self.optimizer.zero_grad()
@@ -136,7 +136,7 @@ class WorldModel:
             actions_tensor = torch.tensor(np.array(actions), dtype=torch.long, device=self.device)
             actions_hot = F.one_hot(actions_tensor, num_classes=POSSIBLE_ACTIONS).float()
             delta = self.model(state_tensor, actions_hot)
-            return (state_tensor + delta).cpu().numpy()
+            return (state_tensor[..., :CONTINUOUS_STATE_DIM] + delta).cpu().numpy()
 
     def predict(self, state, action):
         return self.predict_batch([state], [action])[0]
