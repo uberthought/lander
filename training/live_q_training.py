@@ -16,7 +16,7 @@ from .live_training import _step_action
 import time
 
 
-def train(env, seconds, train_every_n_episodes, video_folder):
+def train(env, seconds, train_every_n_episodes, sample_multiplier, video_folder):
     q_model = QModel()
 
     replay_buffer = ReplayBuffer()
@@ -67,7 +67,7 @@ def train(env, seconds, train_every_n_episodes, video_folder):
             print_q_snr(q_model, replay_buffer0, remain_time=seconds - (time.time() - start_time))
 
             replay_buffer0 = list(replay_buffer0)
-            sample_len = len(replay_buffer0) * 4
+            sample_len = len(replay_buffer0) * sample_multiplier
 
             start_train_time = time.time()
             i = 0
@@ -90,6 +90,7 @@ def main():
     parser = argparse.ArgumentParser(description="Live Q-training for the LunarLander-v3 environment.")
     parser.add_argument("--seconds", type=int, default=60, help="Number of seconds to train")
     parser.add_argument('--train-every', type=int, default=4, help='Number of episodes between training sessions')
+    parser.add_argument('--sample-multiplier', type=int, default=4, help='Replay-buffer sample size = recent-buffer length * this multiplier')
     args = parser.parse_args()
 
     np.set_printoptions(formatter={'float': lambda x: "{0:+0.4f}".format(x)})
@@ -99,7 +100,7 @@ def main():
     env = gym.make("LunarLander-v3", continuous=True, render_mode="rgb_array")
     env = RecordVideo(env, video_folder="./videos", episode_trigger=lambda x: True, disable_logger=True)
 
-    train(env, args.seconds, args.train_every, video_folder="./videos")
+    train(env, args.seconds, args.train_every, args.sample_multiplier, video_folder="./videos")
 
     env.close()
 
