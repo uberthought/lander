@@ -63,6 +63,13 @@ def print_snr(world_model, training_sample, remain_time=None, actor_model=None):
     print(prefix + ' | '.join(sections))
 
 
+def print_q_snr(q_model, training_sample, remain_time=None):
+    prefix = ''
+    if remain_time is not None:
+        prefix = f"Iter t={remain_time:.0f}s "
+    print(prefix + _qmodel_stats_str(q_model, training_sample))
+
+
 def _actor_stats_str(actor_model, training_sample):
     import torch
     actor_model.model.eval()
@@ -81,6 +88,45 @@ def _actor_stats_str(actor_model, training_sample):
     r_section = _stats("Actor-R", prediction[:, 0], targets[:, 0], show_means=False)
     q_section = _stats("Actor-Q", prediction[:, 1], targets[:, 1], show_means=True)
     return f"{r_section} | {q_section}"
+
+
+def _qmodel_stats_str(q_model, training_sample):
+    import torch
+    from shared.configuration import CONTINUOUS_STATE_DIM
+    from shared.observation import calculate_reward, clip_state
+
+    q_model.model.eval()
+    with torch.no_grad():
+        prediction, targets, _ = q_model._compute_prediction_and_targets(training_sample)
+
+        states_1 = torch.tensor(
+            np.array([obs.next_state for obs in training_sample]), dtype=torch.float32, device=q_model.device
+        )
+        states_0 = torch.tensor(
+            np.array([obs.prev_state for obs in training_sample]), dtype=torch.float32, device=q_model.device
+        )
+        states_0_clip = clip_state(states_0)[:, :CONTINUOUS_STATE_DIM]
+
+        delta_pred = prediction[:, :CONTINUOUS_STATE_DIM]
+        q_rest_pred = prediction[:, CONTINUOUS_STATE_DIM]
+        v_pred = calculate_reward(states_0_clip + delta_pred)
+        v_tgt = calculate_reward(states_1)
+
+        q_rest_tgt = targets[:, CONTINUOUS_STATE_DIM]
+        full_q_pred = v_pred + q_rest_pred
+        full_q_tgt = v_tgt + q_rest_tgt
+
+    def _snr(pred, tgt):
+        mse = torch.mean((pred - tgt) ** 2).item()
+        signal = torch.mean(tgt ** 2).item()
+        return 0.0 if mse == 0 or signal == 0 else 10 * np.log10(signal / mse)
+
+    v_snr = _snr(v_pred, v_tgt)
+    q_snr = _snr(full_q_pred, full_q_tgt)
+    return (
+        f"Q-V SNR={v_snr:.1f} | "
+        f"Q-Q SNR={q_snr:.1f} pred={full_q_pred.mean().item():+.3f} tgt={full_q_tgt.mean().item():+.3f}"
+    )
 
 
 def main():
