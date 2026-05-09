@@ -3,6 +3,8 @@ import numpy as np
 from collections import namedtuple
 import torch
 
+from shared.configuration import STATE_SIZE
+
 # Clip bounds derived from pure in-flight data (no legs touching, no done transitions)
 CLIP_MIN = np.array([-1.0, -0.5, -2.5, -2.5, -3.5, -3.5], dtype=np.float32)
 CLIP_MAX = np.array([ 1.0,  4.0,  2.5,  2.0,  3.5,  3.5], dtype=np.float32)
@@ -34,10 +36,9 @@ def is_failure_state(state):
 
 
 def calculate_reward(obs):
-    # Expects `obs` to be the full state (batch, 9) or the 6-dim sensor slice.
-    # Clips internally; the leg/x-position bonus needs the full state.
     if not isinstance(obs, torch.Tensor):
         obs = torch.tensor(obs, dtype=torch.float32)
+    assert obs.shape[-1] == STATE_SIZE, f"calculate_reward expected last dim {STATE_SIZE}, got {obs.shape[-1]}"
 
     NORMALIZATION_FACTORS = np.array([1, 1.75, 4, 4, 3.1415927, 5], dtype=np.float32)
     norm = torch.tensor(NORMALIZATION_FACTORS, dtype=obs.dtype, device=obs.device)
@@ -49,12 +50,11 @@ def calculate_reward(obs):
     position = torch.norm(sensors[:, [0, 1]], dim=1) / np.sqrt(2.0)
     other = torch.norm(sensors[:, [2, 3, 4, 5]], dim=1) / np.sqrt(4.0)
 
-    if obs.shape[-1] >= 13:
-        on_pad = obs[:, 0].abs() < LANDING_X_RADIUS
-        engines_off = obs[:, 9] > 0.5
-        left_bonus = LANDING_BONUS * ((obs[:, 6] > 0.5) & on_pad & engines_off).float()
-        right_bonus = LANDING_BONUS * ((obs[:, 7] > 0.5) & on_pad & engines_off).float()
-        other = other + left_bonus + right_bonus
+    on_pad = obs[:, 0].abs() < LANDING_X_RADIUS
+    engines_off = obs[:, 9] > 0.5
+    left_bonus = LANDING_BONUS * ((obs[:, 6] > 0.5) & on_pad & engines_off).float()
+    right_bonus = LANDING_BONUS * ((obs[:, 7] > 0.5) & on_pad & engines_off).float()
+    other = other + left_bonus + right_bonus
     return position * other
 
 def create_observation(prev_state, action, next_state):

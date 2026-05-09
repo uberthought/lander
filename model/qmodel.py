@@ -104,12 +104,13 @@ class QModel:
             next_full_q = self._full_q_from_heads(next_states_full, next_heads)  # (B, A)
             future_rewards = next_full_q.max(dim=1)[0].unsqueeze(-1)
 
-            prev_rewards = calculate_reward(states_0_full).view(-1, 1)
             current_rewards = calculate_reward(states_1_full).view(-1, 1)
             done_mask = states_1_full[:, 8:9] > 0.5
 
-            shaping = self.discount_factor * current_rewards - prev_rewards
-            nondone_q_rest = shaping + self.discount_factor * future_rewards
+            # Bounded Bellman: target full_Q = (1−γ)·r(s₁) + γ·max_a' full_Q(s₁, a').
+            # Since full_Q = r(s+Δ̂) + q_rest and r(s+Δ̂) ≈ r(s₁) when delta is accurate,
+            # target q_rest = γ·(max_future − r(s₁)).
+            nondone_q_rest = self.discount_factor * (future_rewards - current_rewards)
             q_rest_targets = torch.where(done_mask, torch.zeros_like(nondone_q_rest), nondone_q_rest)
 
             delta_targets = states_1 - states_0  # (B, 13)

@@ -20,7 +20,7 @@ def compute_validation_snr(world_model, validation_sample):
     actions = actions[mask]
 
     actual = states_1[:, :6]
-    predicted = world_model.predict_batch(states_0, actions)
+    predicted = world_model.predict_batch(states_0, actions)[:, :6]
     snr_by_dim = []
     for dim in range(actual.shape[1]):
         signal = np.mean(actual[:, dim] ** 2)
@@ -42,9 +42,9 @@ def compute_world_value_snr(world_model, validation_sample):
     states_1 = states_1[mask]
     actions = actions[mask]
 
-    predicted_next_6 = world_model.predict_batch(states_0, actions)
-    actual_reward = calculate_reward(torch.tensor(states_1[:, :6], dtype=torch.float32)).numpy()
-    predicted_reward = calculate_reward(torch.tensor(predicted_next_6, dtype=torch.float32)).numpy()
+    predicted_next_full = world_model.predict_batch(states_0, actions)
+    actual_reward = calculate_reward(torch.tensor(states_1, dtype=torch.float32)).numpy()
+    predicted_reward = calculate_reward(torch.tensor(predicted_next_full, dtype=torch.float32)).numpy()
 
     mse = float(np.mean((predicted_reward - actual_reward) ** 2))
     signal = float(np.mean(actual_reward ** 2))
