@@ -10,6 +10,7 @@ from collections import deque
 from shared.observation import create_observation, is_failure_state, calculate_reward, clip_state
 from shared.ReplayBuffer import ReplayBuffer
 from model.actor import ActorModel
+from training.offline_training import _actor_stats_str
 
 import time
 
@@ -19,23 +20,10 @@ CONTINUOUS_STATE_DIM = 6
 VALIDATION_SAMPLE_SIZE = 2 ** 10
 
 def print_actor_snr(actor_model, sample, remain_time=None):
-    actor_model.model.eval()
-    with torch.no_grad():
-        prediction, targets = actor_model._compute_prediction_and_targets(sample)
-
-    def _snr(pred, tgt):
-        signal = (tgt ** 2).mean().item()
-        noise = ((tgt - pred) ** 2).mean().item()
-        return 0.0 if noise == 0 or signal == 0 else 10 * np.log10(signal / noise)
-
-    r_pred, r_tgt = prediction[:, 0], targets[:, 0]
-    q_pred, q_tgt = prediction[:, 1], targets[:, 1]
-    prefix = f"Iter t={remain_time:.0f}s " if remain_time is not None else ""
-    print(
-        f"{prefix}"
-        f"Actor-R SNR={_snr(r_pred, r_tgt):.1f} dB  R^={r_pred.mean().item():+.3f}  R*={r_tgt.mean().item():+.3f} | "
-        f"Actor-Q SNR={_snr(q_pred, q_tgt):.1f} dB  Q^={q_pred.mean().item():+.3f}  Q*={q_tgt.mean().item():+.3f}"
-    )
+    prefix = ''
+    if remain_time is not None:
+        prefix = f"Iter t={remain_time:.0f}s "
+    print(prefix + _actor_stats_str(actor_model, sample))
 
 
 def _compute_snr(state, predicted):
@@ -134,11 +122,10 @@ def train(env, seconds, train_every_n_episodes, video_folder):
 
         if do_training:
 
+            print_actor_snr(actor_model, replay_buffer0, remain_time=seconds - (time.time() - start_time))
+
             replay_buffer0 = list(replay_buffer0)
             sample_len = len(replay_buffer0) * 4
-
-            print(f"Training on {len(replay_buffer0)} recent samples and {sample_len} random samples from the main buffer...")
-            print_actor_snr(actor_model, replay_buffer0, remain_time=seconds - (time.time() - start_time))
 
             start_train_time = time.time()
             i = 0
@@ -148,7 +135,6 @@ def train(env, seconds, train_every_n_episodes, video_folder):
                 i += 1
 
             actor_model.save()
-            print_actor_snr(actor_model, replay_buffer0, remain_time=seconds - (time.time() - start_time))
 
             try:
                 replay_buffer.save()

@@ -9,6 +9,7 @@ import tempfile
 from shared.configuration import POSSIBLE_ACTIONS, LAYER_COUNT, NODE_COUNT, STATE_SIZE
 from shared.observation import calculate_reward, clip_state
 
+
 class SkipBlock(nn.Module):
     def __init__(self, nodes):
         super().__init__()
@@ -19,17 +20,13 @@ class SkipBlock(nn.Module):
 
     def forward(self, input):
         s = input
-        x = input
-        x = self.block1(x)
+        x = self.block1(input)
         x = self.relu1(x)
         x = self.block2(x)
         x = x + s
-        x = self.relu2(x)
-        return x
+        return self.relu2(x)
 
-# PyTorch Actor Model
-# input is the current state and a list of actions (one-hot encoded)
-# output is the predicted reward for the given state and action
+
 class ActorNet(nn.Module):
     def __init__(self, action_dim, nodes, layers):
         super().__init__()
@@ -37,17 +34,13 @@ class ActorNet(nn.Module):
         self.sensors_input = nn.Linear(STATE_SIZE, nodes)
         self.action_input = nn.Linear(action_dim, nodes)
         self.skip_layers = nn.ModuleList([SkipBlock(nodes) for _ in range(layers)])
-        # Output heads: [immediate reward, Q-value]
-        self.output = nn.Linear(nodes, 2)
+        self.output = nn.Linear(nodes, 1)
 
     def forward(self, state, action):
-        sensors_embed = self.sensors_input(state)
-        action_embed = self.action_input(action)
-        x = sensors_embed + action_embed
+        x = self.sensors_input(state) + self.action_input(action)
         for i in range(self.layers):
             x = self.skip_layers[i](x)
-        x = self.output(x)
-        return x
+        return self.output(x)
 
 
 class ActorModel:
@@ -60,26 +53,28 @@ class ActorModel:
 
         self.model = ActorNet(POSSIBLE_ACTIONS, NODE_COUNT, LAYER_COUNT)
         self.optimizer = optim.AdamW(self.model.parameters())
-        self.criterion = nn.MSELoss()
 
+        self._load(load)
+
+    def _load(self, load):
         if load and os.path.exists(self.model_path):
-            checkpoint = torch.load(self.model_path, map_location="mps" if torch.backends.mps.is_available() else "cpu")
+            checkpoint = torch.load(self.model_path, map_location=self.device)
             if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint and 'optimizer_state_dict' in checkpoint:
                 self.model.load_state_dict(checkpoint['model_state_dict'])
                 self.model.to(self.device)
                 self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-                print(f"Loaded model and optimizer state from {self.model_path}")
+                print(f"Loaded actor model and optimizer state from {self.model_path}")
             else:
                 self.model.load_state_dict(checkpoint)
                 self.model.to(self.device)
-                print(f"Loaded model weights from {self.model_path} (no optimizer state)")
+                print(f"Loaded actor model weights from {self.model_path} (no optimizer state)")
         else:
             if load:
-                print(f"No checkpoint found at {self.model_path}; starting with random weights.")
+                print(f"No checkpoint found at {self.model_path}; starting actor with random weights.")
             else:
                 print(f"Starting fresh actor with random weights (will save to {self.model_path}).")
             self.model.to(self.device)
-        
+
     def _compute_prediction_and_targets(self, observations):
         actions = torch.tensor([int(obs.action) for obs in observations], dtype=torch.long, device=self.device)
         states_0_full = torch.tensor(np.array([obs.prev_state for obs in observations]), dtype=torch.float32, device=self.device)
@@ -95,81 +90,81 @@ class ActorModel:
         states_1_tile = states_1.unsqueeze(1).repeat(1, self.possible_actions, 1)
 
         with torch.no_grad():
-            next_heads = self.model(states_1_tile, actions_1_onehot)  # (B, A, 2)
-            dones = states_1_full[:, 8]
-            # Full Q at next state = immediate-R head + Q-rest head
-            next_full_q = next_heads[..., 0] + next_heads[..., 1]
-            future_rewards = next_full_q.max(dim=1)[0].unsqueeze(-1)
+            next_full_q = self.model(states_1_tile, actions_1_onehot).squeeze(-1)  # (B, A)
+            future_rewards = next_full_q.max(dim=1)[0].unsqueeze(-1)               # (B, 1)
 
             prev_rewards = calculate_reward(states_0_full).view(-1, 1)
             current_rewards = calculate_reward(states_1_full).view(-1, 1)
-            done_mask = dones.view(-1, 1) > 0.5
+            done_mask = states_1_full[:, 8:9] > 0.5
 
-            # Q-rest target = shaped reward + discounted future Q (excluding immediate).
             shaping = self.discount_factor * current_rewards - prev_rewards
-            nondone_q_rest = shaping + self.discount_factor * future_rewards
+            nondone_full_q = current_rewards + shaping + self.discount_factor * future_rewards
+            full_q_target = torch.where(done_mask, current_rewards, nondone_full_q)  # (B, 1)
 
-            # Done: no future, no shaping. R-head covers the terminal reward; Q-rest = 0.
-            q_rest_targets = torch.where(done_mask, torch.zeros_like(nondone_q_rest), nondone_q_rest)
-            r_targets = current_rewards
-            targets = torch.cat([r_targets, q_rest_targets], dim=-1)
-
-        prediction = self.model(states_0, actions_onehot)
-        return prediction, targets
+        prediction = self.model(states_0, actions_onehot)  # (B, 1)
+        return prediction, full_q_target
 
     def train(self, observations):
         self.model.train()
+
+        actions = torch.tensor([int(obs.action) for obs in observations], dtype=torch.long, device=self.device)
+        states_0_full = torch.tensor(np.array([obs.prev_state for obs in observations]), dtype=torch.float32, device=self.device)
+        states_1_full = torch.tensor(np.array([obs.next_state for obs in observations]), dtype=torch.float32, device=self.device)
+        states_0 = clip_state(states_0_full)
+        states_1 = clip_state(states_1_full)
+        actions_onehot = F.one_hot(actions, num_classes=self.possible_actions).float()
+
+        actions_1 = torch.arange(self.possible_actions, device=self.device).unsqueeze(-1)
+        actions_1_onehot = F.one_hot(actions_1, num_classes=self.possible_actions).view(-1, self.possible_actions).float()
+        actions_1_onehot = actions_1_onehot.unsqueeze(0).repeat(states_1.size(0), 1, 1)
+        states_1_tile = states_1.unsqueeze(1).repeat(1, self.possible_actions, 1)
+
+        with torch.no_grad():
+            next_full_q = self.model(states_1_tile, actions_1_onehot).squeeze(-1)
+            future_rewards = next_full_q.max(dim=1)[0].unsqueeze(-1)
+            prev_rewards = calculate_reward(states_0_full).view(-1, 1)
+            current_rewards = calculate_reward(states_1_full).view(-1, 1)
+            done_mask = states_1_full[:, 8:9] > 0.5
+            shaping = self.discount_factor * current_rewards - prev_rewards
+            nondone_full_q = current_rewards + shaping + self.discount_factor * future_rewards
+            full_q_target = torch.where(done_mask, current_rewards, nondone_full_q)
+
         self.optimizer.zero_grad()
-        prediction, targets = self._compute_prediction_and_targets(observations)
-        per_head_mse = ((prediction - targets) ** 2).mean(dim=0)
-        per_head_var = targets.var(dim=0, unbiased=False).clamp(min=1e-6)
-        loss = (per_head_mse / per_head_var).sum()
+        full_q_pred = self.model(states_0, actions_onehot)  # (B, 1)
+        sq = (full_q_pred - full_q_target) ** 2
+        var = full_q_target.var(unbiased=False).clamp(min=1e-6)
+        loss = sq.mean() / var
         loss.backward()
         self.optimizer.step()
 
     def save(self):
-        fd1, tmp_path = tempfile.mkstemp(prefix='.tmp_actor_', suffix='.pt', dir=os.path.dirname(self.model_path) or '.')
-        os.close(fd1)
-        
+        fd, tmp_path = tempfile.mkstemp(prefix='.tmp_actor_', suffix='.pt', dir=os.path.dirname(self.model_path) or '.')
+        os.close(fd)
         try:
             torch.save({
                 'model_state_dict': self.model.state_dict(),
                 'optimizer_state_dict': self.optimizer.state_dict(),
             }, tmp_path)
             os.replace(tmp_path, self.model_path)
-            
-        except KeyboardInterrupt:
-            for tmp_path in [tmp_path, tmp_path]:
-                if os.path.exists(tmp_path):
-                    os.remove(tmp_path)
-            raise
         except Exception:
-            for tmp_path in [tmp_path, tmp_path]:
-                if os.path.exists(tmp_path):
-                    os.remove(tmp_path)
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
             raise
 
     def get_best_action(self, state):
         self.model.eval()
         state = clip_state(np.array(state, dtype=np.float32))
         state_tensor = torch.tensor(state, dtype=torch.float32, device=self.device).unsqueeze(0)
-        
-        actions_1 = torch.arange(self.possible_actions, device=self.device).unsqueeze(-1)
-        actions_1_onehot = F.one_hot(actions_1, num_classes=self.possible_actions).unsqueeze(0)
-        actions_1_onehot = actions_1_onehot.view(-1, self.possible_actions)
 
-        actions_1_onehot = actions_1_onehot.repeat(state_tensor.size(0), 1, 1).float()
+        actions_1 = torch.arange(self.possible_actions, device=self.device).unsqueeze(-1)
+        actions_1_onehot = F.one_hot(actions_1, num_classes=self.possible_actions).view(-1, self.possible_actions).float()
+        actions_1_onehot = actions_1_onehot.unsqueeze(0).repeat(state_tensor.size(0), 1, 1)
         state_expanded = state_tensor.unsqueeze(1).repeat(1, self.possible_actions, 1)
 
         with torch.no_grad():
-            heads = self.model(state_expanded, actions_1_onehot)
-            predicted_rewards = heads[..., 0] + heads[..., 1]
-        predicted_rewards = predicted_rewards.view(state_tensor.size(0), self.possible_actions)
+            full_q = self.model(state_expanded, actions_1_onehot).squeeze(-1)  # (1, A)
 
-        probs = F.softmax(predicted_rewards, dim=1)
-        probs = probs * 100
-        probs = F.softmax(probs, dim=1)
+        probs = F.softmax(full_q, dim=1)
+        probs = F.softmax(probs * 100, dim=1)
         best_action_index = torch.multinomial(probs, num_samples=1).squeeze(1)
-        best_action = actions_1[best_action_index]
-
-        return best_action.item()
+        return actions_1[best_action_index].item()

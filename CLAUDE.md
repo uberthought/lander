@@ -4,87 +4,104 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Deep Reinforcement Learning agent for the **LunarLander-v3** Gymnasium environment. Three training modes use two neural networks:
-- **Actor Model** (`model/actor.py`) — predicts Q-values (expected rewards) for each of 16 possible action combinations
-- **World Model** (`model/world.py`) — predicts next-state deltas given current state + action
-- **World training** (`training/world_training.py`) — trains the actor via imaginary rollouts through the world model (model-based RL, no environment interaction)
+Deep Reinforcement Learning agent for the **LunarLander-v3** Gymnasium environment (continuous action space).
+
+- **`model/actor.py`** — `ActorModel`. Single scalar full-Q head per `(state, action)`. Trained against a potential-shaped self-bootstrap target (see below). Variance-normalized MSE loss.
+- **`model/world.py`** — `WorldModel`. Predicts the continuous next-state delta. Used for diagnostics and dreamed-rollout training of the actor.
+
+Both train against the shared `ReplayBuffer` via `live_training` / `offline_training` / `world_training` / `actor_training`.
 
 ## Common Commands
 
 ```bash
-# Collect random experience to bootstrap the replay buffer (default --episodes 256)
-python3 -m training.collect_random_data --episodes 1024
+# --- Bootstrap ---
+python3 -m training.collect_random_data --episodes 1024     # seed replay_buffer.dat
 
-# Offline training (learn from replay buffer, no environment interaction)
-python3 -m training.offline_training --seconds 60 --sample-size 16   # sample-size is exponent: 2^16 = 65536
+# --- Training ---
+python3 -m training.offline_training --seconds 60 --sample-size 16   # 2^16 transitions
+python3 -m training.live_training    --seconds 600 --train-every 4
+python3 -m training.actor_training   --seconds 600 --train-every 4
+python3 -m training.world_training   --seconds 60 --rollout-steps 10
 
-# Live/on-policy training (interacts with environment, trains every N episodes)
-python3 -m training.live_training --seconds 600 --train-every 4
-
-# World-model imagination training (model-based, no environment interaction)
-python3 -m training.world_training --seconds 60 --rollout-steps 10
-
-# Run the full pipeline (collect → offline train → live train)
-bash training_run.sh
-
-# Run ReplayBuffer unit tests
+# --- Tests / cleanup ---
 python3 -m tests.test_ReplayBuffer
-
-# Clean up models, videos, and replay buffer
-bash clean.sh
+bash clean.sh                                                # wipes checkpoints/, videos/, data/replay_buffer.dat*
 ```
 
 ## Architecture
 
 ### State & Action Space
 
-- **State**: 9-dimensional — `[x, y, vx, vy, angle, vangle, left_leg, right_leg, done]`
-- **Actions**: 2 simultaneous action slots, each 0–3 (off/right/left/reverse), giving **16 combinations** (`4^2`)
-- Actions are **one-hot encoded** into a 16-dim vector for network input
+- **State**: 13-dimensional vector laid out as `[x, y, vx, vy, angle, vangle, left_leg, right_leg, done, prev_a0, prev_a1, prev_a2, prev_a3]`. The first 6 are continuous sensors (`CONTINUOUS_STATE_DIM = 6`); legs and done are 0/1; the last 4 are a one-hot of the action that produced this state. The initial state after `env.reset()` is padded with `[0, 1, 0, 0, 0]` (legs=01, done=0, prev-action=null).
+- **Actions**: flat 4-action discrete space (`POSSIBLE_ACTIONS = 4`). Mapping in `training/live_training._step_action` — `0=off`, `1=right`, `2=left`, `3=reverse` — encoded as a 2-D continuous LunarLander action vector.
+- Actions are **one-hot encoded** into a 4-dim vector for network input.
 
-### Neural Network Design (shared by both models)
-
-```
-Input (state + action) → Linear(in, 64) → 4× SkipBlock(64) → Linear(64, out)
-SkipBlock: Linear→LeakyReLU→Linear→ReLU + residual
-Optimizer: AdamW
-```
-
-- **Actor loss**: MSE (predicted Q-value vs. cumulative reward target)
-- **World loss**: Huber (delta=1.0) with per-dimension weights `1/std(delta)`, normalized per batch
-
-### Data Flow
+### Neural Network Design
 
 ```
-training/collect_random_data.py → ReplayBuffer (replay_buffer.dat, memmap, ~369 MB, capacity 2^22)
-                              ↓
-  training/offline_training.py / training/live_training.py / training/world_training.py
-                              ↓
-                    checkpoints/actor_model.pt + checkpoints/world_model.pt
+Input: state (13) + action (4) — projected separately and summed
+       Linear(13, 64) + Linear(4, 64)  →  Σ
+            ↓
+       16× SkipBlock(64)         (LAYER_COUNT × NODE_COUNT)
+            ↓
+       Linear(64, out_dim)
 ```
 
-### Key Conventions
+`SkipBlock`: Linear → LeakyReLU → Linear → (+ residual) → LeakyReLU. Optimizer: AdamW.
 
-- **Device**: auto-selects MPS (Apple Silicon) → CPU fallback
-- **Reward**: `torch.norm(sensors[:, [0, 1, 4]], dim=1) / sqrt(3)` — L2 norm of x, y, angle sensors (dims 0, 1, 4 only), clamped to [0,1]
-- **Normalization factors** (in `shared/observation.py`): `[1, 1.75, 4, 4, π, 5, 1, 1, 1]` — last entry is done (already in [0,1])
-- **Validation metric**: SNR (dB) = `10 * log10(signal / noise)` — higher is better world model accuracy
-- **Observation namedtuple**: `(episode, time, prev_state, actions, next_state, done)`
-- **Atomic writes**: both ReplayBuffer metadata and model checkpoints use temp-file + rename
+Output dims by model:
+- `model/actor.py` `ActorNet`: `1` — scalar full Q-value
+- `model/world.py` `WorldNet`: `CONTINUOUS_STATE_DIM` (6) — next-state delta (continuous dims only)
+
+### Reward (`shared/observation.calculate_reward`)
+
+Not the LunarLander default reward. The reward used everywhere here is geometric and dense:
+
+1. Clip the 6 continuous sensors to `CLIP_MIN/CLIP_MAX` (in-flight envelope).
+2. Normalize by `[1, 1.75, 4, 4, π, 5]`, take `1 - |·|`, clamp to `[0, 1]`.
+3. `position = ‖(x, y)‖₂ / √2`, `other = ‖(vx, vy, angle, vangle)‖₂ / √4`.
+4. **Landing bonus**: when `|x| < 0.3`, engines off (`prev_a0 > 0.5`), and a leg flag is set, add `0.5` per leg to `other`.
+5. Return `position * other`.
+
+Failure states (`is_failure_state`): `|angle| > π/2`, or `y < -0.5`, or `y > 2.0`. Set `done` when these trip, *in addition* to gym's done/truncated.
+
+### Potential-shaped Q target (ActorModel)
+
+ActorModel predicts full Q directly and bootstraps off its own next-state max:
+
+```
+target_full_Q = r(s₁) + [γ · r(s₁) − r(s₀)] + γ · max_a' Q(s₁, a')   # non-terminal
+target_full_Q = r(s₁)                                                # terminal (done flag set)
+```
+
+with `discount_factor = 0.97`. The reward function stays explicit on the `s₁` side; the bootstrap absorbs the shaping potential `γ·r(s₁) − r(s₀)`. Loss is MSE on `(pred − target)²` divided by `target.var()` (variance-normalized).
+
+### Storage
+
+`shared/ReplayBuffer.py` — `data/replay_buffer.dat`, memmap, ~369 MB, capacity 2²², atomic metadata. Used by every training script.
+
+### Live training on-policy mixing
+
+`training/live_training.py` (and the `actor_training` variant) maintains a short-horizon `deque(maxlen=40000)` of recent transitions alongside the persistent `ReplayBuffer`. Each training call mixes `len(replay_buffer0) * sample_multiplier` recent samples with the same count from the main buffer, biasing toward fresh on-policy data. `sample_multiplier` defaults to 4.
 
 ### Configuration (`shared/configuration.py`)
 
-| Constant | Value | Location | Meaning |
-|----------|-------|----------|---------|
-| `STATE_SIZE` | 13 | `shared/configuration.py` | Dimensions of state vector |
-| `POSSIBLE_ACTIONS` | 4 | `shared/configuration.py` | Options per action slot |
-| `LAYER_COUNT` | 4 | `shared/configuration.py` | Number of skip blocks |
-| `NODE_COUNT` | 64 | `shared/configuration.py` | Width of hidden layers |
-| `WORLD_LOSS_DELTA` | 1.0 | `shared/configuration.py` | Huber loss delta for world model |
-| `discount_factor` | 0.95 | `model/actor.py` | Q-value discount rate |
-| `lr` (AdamW) | 0.001 | `model/world.py` | World model learning rate |
-| `replay_buffer0.maxlen` | 40000 | `training/live_training.py` | Recent on-policy experience window |
+| Constant | Value | Meaning |
+|----------|-------|---------|
+| `STATE_SIZE` | 13 | 6 sensors + 2 leg flags + done + 4 one-hot prev action |
+| `CONTINUOUS_STATE_DIM` | 6 | First-N dims that go through clipping/normalization |
+| `POSSIBLE_ACTIONS` | 4 | Flat discrete action count |
+| `LAYER_COUNT` | 16 | Number of `SkipBlock`s in the trunk |
+| `NODE_COUNT` | 64 | Hidden width |
+| `WORLD_LOSS_DELTA` | 1.0 | Huber delta for dynamics regression |
 
-### Live Training On-Policy Mixing
+Hyperparameters defined in model files (not configuration.py): `discount_factor = 0.97` (actor.py), `lr = 0.001` (world.py only — actor uses AdamW defaults).
 
-`training/live_training.py` maintains a short-horizon deque (`replay_buffer0`, maxlen=40000) of recent experience alongside the main replay buffer. Each training call mixes `len(replay_buffer0) * 4` samples from the recent buffer with the same count from the main buffer, prioritizing fresh on-policy data.
+### Conventions
+
+- **Device**: auto-selects MPS (Apple Silicon) → CPU fallback. Models, tensors, and loaded checkpoints all `.to(self.device)`; loading from a checkpoint saved on a different device requires `map_location`.
+- **Action sampling** in `get_best_action`: `softmax(softmax(full_q) * 100)` then `multinomial` — a sharpened temperature trick that's near-greedy but keeps exploration alive.
+- **Validation metric**: SNR (dB) per dim = `10·log10(signal / noise)` over the masked validation sample — higher is better dynamics accuracy.
+- **Observation namedtuple**: `Observation(prev_state, action, next_state)` — `action` is a single int 0–3, not a tuple.
+- **Atomic writes**: every persistent artifact (replay buffer metadata, model `.pt`) writes to a temp file then `os.replace()`s into place. Never write directly to a final path.
+- **Checkpoint format**: `{'model_state_dict': ..., 'optimizer_state_dict': ...}`. Loaders handle both this dict form and a bare state-dict for backward compat. When loading optimizer state, the model must be `.to(device)` *before* `optimizer.load_state_dict(...)` so optimizer state lands on the same device as the parameters.
