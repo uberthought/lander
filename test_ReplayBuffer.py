@@ -1,8 +1,8 @@
 import os
 import numpy as np
 import tempfile
-from shared.ReplayBuffer import ReplayBuffer
-from shared.configuration import STATE_SIZE
+from ReplayBuffer import ReplayBuffer
+from configuration import STATE_SIZE
 
 def make_obs(state, actions, next_state, time, done):
     # Use dummy values for episode, will be overwritten by buffer

@@ -3,7 +3,7 @@ from typing import List, Tuple
 import random
 import numpy as np
 
-from shared.configuration import STATE_SIZE
+from configuration import STATE_SIZE
 
 class ReplayBuffer:
     """Memory-mapped cyclic buffer with automatic disk persistence.

@@ -3,7 +3,7 @@ import numpy as np
 from collections import namedtuple
 import torch
 
-from shared.configuration import STATE_SIZE
+from configuration import STATE_SIZE
 
 # Clip bounds derived from pure in-flight data (no legs touching, no done transitions)
 CLIP_MIN = np.array([-1.0, -0.5, -2.5, -2.5, -3.5, -3.5], dtype=np.float32)
@@ -22,7 +22,7 @@ def clip_state(state):
 FAILURE_ANGLE = np.pi / 2  # quarter turn — past this, the ship is considered to have failed
 FAILURE_Y_MIN = -0.5  # below ground / off the bottom of the operational envelope
 FAILURE_Y_MAX = 2.0   # above the operational ceiling
-LANDING_BONUS = 0.5      # per-step bonus when leg(s) on pad
+LANDING_BONUS = 1.0      # per-step bonus when leg(s) on pad
 LANDING_X_RADIUS = 0.3   # x distance from centerline that counts as "on pad"
 
 
@@ -56,10 +56,9 @@ def calculate_reward(obs):
     other = torch.norm(sensors[:, [2, 3, 4, 5]], dim=1) / np.sqrt(4.0)
 
     on_pad = obs[:, 0].abs() < LANDING_X_RADIUS
-    engines_off = obs[:, 9] > 0.5
-    left_bonus = LANDING_BONUS * ((obs[:, 6] > 0.5) & on_pad & engines_off).float()
-    right_bonus = LANDING_BONUS * ((obs[:, 7] > 0.5) & on_pad & engines_off).float()
-    # other = other + left_bonus + right_bonus
+    # engines_off = obs[:, 9] > 0.5
+    left_bonus = LANDING_BONUS * ((obs[:, 6] > 0.5) & on_pad).float()
+    right_bonus = LANDING_BONUS * ((obs[:, 7] > 0.5) & on_pad).float()
     return position * other + left_bonus + right_bonus
 
 def create_observation(prev_state, action, next_state):

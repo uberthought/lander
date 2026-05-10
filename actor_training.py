@@ -1,20 +1,20 @@
+import os
 import torch
 import gymnasium as gym
 from gymnasium.wrappers import RecordVideo
 import numpy as np
-import os
 import shutil
 import argparse
 from collections import deque
 
-from shared.observation import create_observation, is_done_state, calculate_reward, clip_state
-from shared.ReplayBuffer import ReplayBuffer
-from model.actor import ActorModel
-from training.offline_training import _actor_stats_str
+from observation import create_observation, is_done_state, calculate_reward, clip_state
+from ReplayBuffer import ReplayBuffer
+from actor import ActorModel
+from offline_training import _actor_stats_str
 
 import time
 
-from shared.configuration import POSSIBLE_ACTIONS
+from configuration import POSSIBLE_ACTIONS
 
 CONTINUOUS_STATE_DIM = 6
 VALIDATION_SAMPLE_SIZE = 2 ** 10

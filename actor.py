@@ -6,8 +6,8 @@ import numpy as np
 import os
 import tempfile
 
-from shared.configuration import POSSIBLE_ACTIONS, LAYER_COUNT, NODE_COUNT, STATE_SIZE
-from shared.observation import calculate_reward, clip_state
+from configuration import POSSIBLE_ACTIONS, LAYER_COUNT, NODE_COUNT, STATE_SIZE
+from observation import calculate_reward, clip_state
 
 
 class SkipBlock(nn.Module):
