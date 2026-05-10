@@ -5,7 +5,7 @@ import torch
 import gymnasium as gym
 from collections import deque
 
-from shared.observation import create_observation, calculate_reward, is_failure_state
+from shared.observation import create_observation, calculate_reward, is_done_state
 from shared.ReplayBuffer import ReplayBuffer
 from model.world import WorldModel
 from model.actor import ActorModel
@@ -29,7 +29,7 @@ def _is_done(state, t, max_steps):
         return True
     if state[8] >= DONE_THRESHOLD:
         return True
-    if is_failure_state(state):
+    if is_done_state(state):
         return True
     return False
 
@@ -73,7 +73,7 @@ def _step_action(action, env):
     elif action == 3:
         action0 = np.array([0.0, -1.0], dtype=np.float32)
     next_state, _, done, truncated, _ = env.step(action0)
-    done = done or truncated or is_failure_state(next_state)
+    done = done or truncated or is_done_state(next_state)
     onehot = np.zeros(POSSIBLE_ACTIONS, dtype=np.float32)
     onehot[action] = 1.0
     next_state = np.concatenate((next_state, [float(done)], onehot))

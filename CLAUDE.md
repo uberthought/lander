@@ -7,9 +7,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Deep Reinforcement Learning agent for the **LunarLander-v3** Gymnasium environment (continuous action space).
 
 - **`model/actor.py`** — `ActorModel`. Single scalar full-Q head per `(state, action)`. Trained against a potential-shaped self-bootstrap target (see below). Variance-normalized MSE loss.
-- **`model/world.py`** — `WorldModel`. Predicts the continuous next-state delta. Used for diagnostics and dreamed-rollout training of the actor.
+- **`model/world.py`** — `WorldModel`. Predicts the next-state delta (full 13-dim, masked at training time so leg-changes/done rows are dropped). Used for diagnostics and dreamed-rollout training of the actor.
 
-Both train against the shared `ReplayBuffer` via `live_training` / `offline_training` / `world_training` / `actor_training`.
+Training entrypoints, all sharing the same `ReplayBuffer`:
+- `live_training` — collects on-policy episodes via the **actor** and trains **both** actor and world together; uses `print_snr` to report combined SNR.
+- `actor_training` — same on-policy collection loop, but **only** trains the actor (world model untouched).
+- `offline_training` — pure replay-buffer training of both networks (no env stepping).
+- `world_training` — alternates real-env evaluation episodes with **dreamed rollouts** through the world model used as actor training data.
 
 ## Common Commands
 
@@ -22,6 +26,9 @@ python3 -m training.offline_training --seconds 60 --sample-size 16   # 2^16 tran
 python3 -m training.live_training    --seconds 600 --train-every 4
 python3 -m training.actor_training   --seconds 600 --train-every 4
 python3 -m training.world_training   --seconds 60 --rollout-steps 10
+
+# --- Playback / inspection ---
+python3 play_actor.py --model-path checkpoints/actor.pt --episodes 10  # records videos of greedy(-ish) rollouts
 
 # --- Tests / cleanup ---
 python3 -m tests.test_ReplayBuffer
@@ -51,7 +58,7 @@ Input: state (13) + action (4) — projected separately and summed
 
 Output dims by model:
 - `model/actor.py` `ActorNet`: `1` — scalar full Q-value
-- `model/world.py` `WorldNet`: `CONTINUOUS_STATE_DIM` (6) — next-state delta (continuous dims only)
+- `model/world.py` `WorldNet`: `STATE_SIZE` (13) — full next-state delta. Loss is **masked** at training time to exclude transitions where a leg flag changes (`states_0[:, 6:8] != states_1[:, 6:8]`) or `done` fires on `s₁`; SNR diagnostics use the same mask.
 
 ### Reward (`shared/observation.calculate_reward`)
 
@@ -63,7 +70,7 @@ Not the LunarLander default reward. The reward used everywhere here is geometric
 4. **Landing bonus**: when `|x| < 0.3`, engines off (`prev_a0 > 0.5`), and a leg flag is set, add `0.5` per leg to `other`.
 5. Return `position * other`.
 
-Failure states (`is_failure_state`): `|angle| > π/2`, or `y < -0.5`, or `y > 2.0`. Set `done` when these trip, *in addition* to gym's done/truncated.
+Done states (`shared/observation.is_done_state`): `|angle| > π/2`, `y < -0.5`, `y > 2.0`, or both legs touching down. Treated as done **in addition** to gym's `done`/`truncated`; the `done` flag in the 13-dim state vector is set from this combined condition. The training loops in `live_training.py` / `actor_training.py` exit on `done` alone — there is no separate `truncated` branch any more.
 
 ### Potential-shaped Q target (ActorModel)
 
@@ -82,7 +89,9 @@ with `discount_factor = 0.97`. The reward function stays explicit on the `s₁` 
 
 ### Live training on-policy mixing
 
-`training/live_training.py` (and the `actor_training` variant) maintains a short-horizon `deque(maxlen=40000)` of recent transitions alongside the persistent `ReplayBuffer`. Each training call mixes `len(replay_buffer0) * sample_multiplier` recent samples with the same count from the main buffer, biasing toward fresh on-policy data. `sample_multiplier` defaults to 4.
+`training/live_training.py` and `training/actor_training.py` maintain a short-horizon `deque(maxlen=40000)` of recent transitions alongside the persistent `ReplayBuffer`. Each training cycle (every `--train-every` episodes) mixes `len(replay_buffer0) * 4` random samples from the main buffer with **all** recent samples, biasing toward fresh on-policy data; the multiplier `4` is hardcoded in both files (no CLI flag). The inner training loop is wall-clock-budgeted to 10 seconds per cycle.
+
+Per-cycle output is one line via `print_snr` / `print_actor_snr` (`Iter t=Xs World SNR=… | Actor-Q SNR=… pred=… tgt=…`); `actor_training.py` reuses `_actor_stats_str` from `offline_training.py` to keep that format identical across scripts.
 
 ### Configuration (`shared/configuration.py`)
 

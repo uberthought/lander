@@ -7,7 +7,7 @@ import shutil
 import argparse
 from collections import deque
 
-from shared.observation import create_observation, is_failure_state, calculate_reward, clip_state
+from shared.observation import create_observation, is_done_state, calculate_reward, clip_state
 from shared.ReplayBuffer import ReplayBuffer
 from model.actor import ActorModel
 from training.offline_training import _actor_stats_str
@@ -24,7 +24,6 @@ def print_actor_snr(actor_model, sample, remain_time=None):
     if remain_time is not None:
         prefix = f"Iter t={remain_time:.0f}s "
     print(prefix + _actor_stats_str(actor_model, sample))
-
 
 def _compute_snr(state, predicted):
     state = state[:CONTINUOUS_STATE_DIM]
@@ -45,7 +44,7 @@ def _step_action(action, env):
     elif action == 3:
         action0 = np.array([0.0, -1.0], dtype=np.float32)
     next_state, _, done, truncated, _ = env.step(action0)
-    done = done or truncated or is_failure_state(next_state)
+    done = done or truncated or is_done_state(next_state)
     onehot = np.zeros(POSSIBLE_ACTIONS, dtype=np.float32)
     onehot[action] = 1.0
     next_state = np.concatenate((next_state, [float(done)], onehot))
@@ -78,15 +77,10 @@ def train(env, seconds, train_every_n_episodes, video_folder):
         # Live testing loop start
         #########
 
-        while not done and not truncated:
+        while not done:
             t += 1
             action = actor_model.get_best_action(prev_state)
             next_state, done = _step_action(action, env)
-
-            # legs = next_state[6:8]
-            # if legs[0] == 1 and legs[1] == 1:
-            #     done = True
-            #     next_state[-1] = 1.0
 
             transition = create_observation(prev_state, action, next_state)
             replay_buffer.add(transition)

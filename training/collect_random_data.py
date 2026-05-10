@@ -3,7 +3,7 @@ import numpy as np
 import os
 import shutil
 import argparse
-from shared.observation import create_observation, is_failure_state
+from shared.observation import create_observation, is_done_state
 from shared.ReplayBuffer import ReplayBuffer
 
 from shared.configuration import POSSIBLE_ACTIONS
@@ -18,7 +18,7 @@ def step_action(action, env):
     elif action == 3:
         action0 = np.array([0.0, -1.0], dtype=np.float32)
     next_state, _, done, truncated, _ = env.step(action0)
-    done = done or truncated or is_failure_state(next_state)
+    done = done or truncated or is_done_state(next_state)
     onehot = np.zeros(POSSIBLE_ACTIONS, dtype=np.float32)
     onehot[action] = 1.0
     next_state = np.concatenate((next_state, [float(done)], onehot))

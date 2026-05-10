@@ -26,11 +26,16 @@ LANDING_BONUS = 0.5      # per-step bonus when leg(s) on pad
 LANDING_X_RADIUS = 0.3   # x distance from centerline that counts as "on pad"
 
 
-def is_failure_state(state):
+def is_done_state(state):
+    # Tipped past recoverable angle (failed).
     if abs(float(state[4])) > FAILURE_ANGLE:
         return True
+    # Out of the vertical envelope: crashed below the floor or flew above the ceiling (failed).
     y = float(state[1])
     if y < FAILURE_Y_MIN or y > FAILURE_Y_MAX:
+        return True
+    # Both legs touching the ground (landed).
+    if float(state[6]) > 0.5 and float(state[7]) > 0.5:
         return True
     return False
 
@@ -54,8 +59,8 @@ def calculate_reward(obs):
     engines_off = obs[:, 9] > 0.5
     left_bonus = LANDING_BONUS * ((obs[:, 6] > 0.5) & on_pad & engines_off).float()
     right_bonus = LANDING_BONUS * ((obs[:, 7] > 0.5) & on_pad & engines_off).float()
-    other = other + left_bonus + right_bonus
-    return position * other
+    # other = other + left_bonus + right_bonus
+    return position * other + left_bonus + right_bonus
 
 def create_observation(prev_state, action, next_state):
     return Observation(prev_state, action, next_state)
