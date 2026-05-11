@@ -144,39 +144,6 @@ class ReplayBuffer:
         for o in observations:
             self.add(o)
 
-    def sample2(self, k: int) -> List:
-        """Offset to a random position and read k observations sequentially (never wraps into uninitialized slots)."""
-        k = min(k, self.size)
-        if k == 0:
-            return []
-        valid_indices = self._get_valid_indices()
-        # If buffer is not full, only sample within [0, size)
-        if self.size < self.maxlen:
-            # Only valid indices are [0, size)
-            max_start = self.size - k
-            if max_start < 0:
-                # Not enough data for a full sequence, just return as many as possible from the start
-                start_idx = 0
-                k = self.size
-            else:
-                start_idx = np.random.randint(0, max_start + 1)
-            indices = np.arange(start_idx, start_idx + k)
-        else:
-            # Buffer is full, can wrap around
-            start_idx = np.random.choice(valid_indices)
-            indices = (start_idx + np.arange(k)) % self.maxlen
-        samples = []
-        for idx in indices:
-            obs = self.buffer[idx]
-            # Create a simple object to mimic namedtuple behavior
-            class Observation:
-                def __init__(self, prev_state, action, next_state):
-                    self.prev_state = prev_state
-                    self.action = action
-                    self.next_state = next_state
-            samples.append(Observation(obs['prev_state'], obs['action'], obs['next_state']))
-        return samples
-
     def sample(self, k: int) -> List:
         """Sample k random observations from the buffer."""
         k = min(k, self.size)
@@ -191,6 +158,34 @@ class ReplayBuffer:
         for i in sampled_indices:
             obs = self.buffer[i]
             # Create a simple object to mimic namedtuple behavior
+            class Observation:
+                def __init__(self, prev_state, action, next_state):
+                    self.prev_state = prev_state
+                    self.action = action
+                    self.next_state = next_state
+            samples.append(Observation(obs['prev_state'], obs['action'], obs['next_state']))
+
+        return samples
+
+    def sample_weighted(self, k: int, alpha: float = 1.0) -> List:
+        """Sample k observations with replacement, weighted toward the most recent.
+
+        Weight for an item with recency rank r (0 = most recent) is 1 / (r + 1)**alpha.
+        """
+        if k == 0 or self.size == 0:
+            return []
+
+        valid_indices = self._get_valid_indices()  # ordered oldest -> newest
+        n = len(valid_indices)
+        ranks = np.arange(n - 1, -1, -1, dtype=np.float64)  # newest gets rank 0
+        weights = 1.0 / (ranks + 1.0) ** alpha
+        weights /= weights.sum()
+
+        sampled_indices = np.random.choice(valid_indices, size=k, replace=True, p=weights)
+
+        samples = []
+        for i in sampled_indices:
+            obs = self.buffer[i]
             class Observation:
                 def __init__(self, prev_state, action, next_state):
                     self.prev_state = prev_state

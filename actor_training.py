@@ -122,11 +122,9 @@ def train(env, seconds, train_every_n_episodes, video_folder):
             sample_len = len(replay_buffer0) * 4
 
             start_train_time = time.time()
-            i = 0
-            while time.time() - start_train_time < 10:
-                training_sample = replay_buffer.sample(sample_len) + replay_buffer0
+            while time.time() - start_train_time < 16:
+                training_sample = replay_buffer.sample_weighted(sample_len) + replay_buffer0
                 actor_model.train(training_sample)
-                i += 1
 
             actor_model.save()
 
@@ -141,7 +139,7 @@ def train(env, seconds, train_every_n_episodes, video_folder):
 
 def main():
     parser = argparse.ArgumentParser(description="Live training for the LunarLander-v2 environment.")
-    parser.add_argument("--seconds", type=int, default=60, help="Number of seconds to train")
+    parser.add_argument("--seconds", type=int, default=3600, help="Number of seconds to train")
     parser.add_argument('--train-every', type=int, default=4, help='Number of episodes between training sessions')
     seconds = parser.parse_args().seconds
     train_every = parser.parse_args().train_every

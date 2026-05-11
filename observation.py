@@ -19,11 +19,11 @@ def clip_state(state):
     return np.concatenate([clipped, state[..., 6:]], axis=-1)
 
 
-FAILURE_ANGLE = np.pi / 2  # quarter turn — past this, the ship is considered to have failed
+FAILURE_ANGLE = np.pi / 1.5  # quarter turn — past this, the ship is considered to have failed
 FAILURE_Y_MIN = -0.5  # below ground / off the bottom of the operational envelope
 FAILURE_Y_MAX = 2.0   # above the operational ceiling
 LANDING_BONUS = 1.0      # per-step bonus when leg(s) on pad
-LANDING_X_RADIUS = 0.3   # x distance from centerline that counts as "on pad"
+LANDING_X_RADIUS = 0.2   # x distance from centerline that counts as "on pad"
 
 
 def is_done_state(state):
@@ -35,8 +35,8 @@ def is_done_state(state):
     if y < FAILURE_Y_MIN or y > FAILURE_Y_MAX:
         return True
     # Both legs touching the ground (landed).
-    if float(state[6]) > 0.5 and float(state[7]) > 0.5:
-        return True
+    # if float(state[6]) > 0.5 and float(state[7]) > 0.5:
+    #     return True
     return False
 
 
