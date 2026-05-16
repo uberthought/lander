@@ -128,6 +128,7 @@ def train(seconds, rollout_steps, eval_episodes, sample_size):
 
     start_time = time.time()
     iteration = 0
+    imagined_transitions = []
 
     while time.time() - start_time < seconds:
         iteration += 1
@@ -145,11 +146,13 @@ def train(seconds, rollout_steps, eval_episodes, sample_size):
             max_steps=rollout_steps,
             episode_id=episode_id,
         )
-
-        if transitions:
-            actor_model.train(transitions)
+        imagined_transitions.extend(transitions)
 
         if iteration % 10 == 0:
+            if imagined_transitions:
+                actor_model.train(imagined_transitions)
+            imagined_transitions = []
+
             actor_model.save()
             world_model.save()
 
