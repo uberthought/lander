@@ -121,6 +121,7 @@ def train(env, seconds, train_every_n_episodes, video_folder):
             replay_buffer0 = list(replay_buffer0)
             sample_len = len(replay_buffer0) * 4
 
+            actor_model.sync_target()
             start_train_time = time.time()
             while time.time() - start_train_time < 16:
                 training_sample = replay_buffer.sample_weighted(sample_len) + replay_buffer0

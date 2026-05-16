@@ -49,6 +49,9 @@ def main():
 
         i += 1
 
+        if i % 50 == 0:
+            actor_model.sync_target()
+
         # save every 10 iterations
         if i % 10 == 0:
             actor_model.save()

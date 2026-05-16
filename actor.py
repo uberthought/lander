@@ -52,6 +52,7 @@ class ActorModel:
         self.device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 
         self.model = ActorNet(POSSIBLE_ACTIONS, NODE_COUNT, LAYER_COUNT)
+        self.target_model = ActorNet(POSSIBLE_ACTIONS, NODE_COUNT, LAYER_COUNT)
         self.optimizer = optim.AdamW(self.model.parameters())
 
         self._load(load)
@@ -74,6 +75,12 @@ class ActorModel:
             else:
                 print(f"Starting fresh actor with random weights (will save to {self.model_path}).")
             self.model.to(self.device)
+        self.target_model.load_state_dict(self.model.state_dict())
+        self.target_model.to(self.device)
+
+    def sync_target(self):
+        self.target_model.load_state_dict(self.model.state_dict())
+        print("[actor] target model synced")
 
     def _compute_prediction_and_targets(self, observations):
         actions = torch.tensor([int(obs.action) for obs in observations], dtype=torch.long, device=self.device)
@@ -120,7 +127,7 @@ class ActorModel:
         states_1_tile = states_1.unsqueeze(1).repeat(1, self.possible_actions, 1)
 
         with torch.no_grad():
-            next_full_q = self.model(states_1_tile, actions_1_onehot).squeeze(-1)
+            next_full_q = self.target_model(states_1_tile, actions_1_onehot).squeeze(-1)
             future_rewards = next_full_q.max(dim=1)[0].unsqueeze(-1)
             prev_rewards = calculate_reward(states_0_full).view(-1, 1)
             current_rewards = calculate_reward(states_1_full).view(-1, 1)
@@ -129,12 +136,27 @@ class ActorModel:
             nondone_full_q = current_rewards + shaping + self.discount_factor * future_rewards
             full_q_target = torch.where(done_mask, current_rewards, nondone_full_q)
 
+        if not full_q_target.isfinite().all():
+            print(f"[actor] non-finite target: mean={full_q_target.mean().item():.3g} max={full_q_target.abs().max().item():.3g}, skipping step")
+            return
+
         self.optimizer.zero_grad()
         full_q_pred = self.model(states_0, actions_onehot)  # (B, 1)
+
+        if not full_q_pred.isfinite().all():
+            print(f"[actor] non-finite pred: mean={full_q_pred.mean().item():.3g} max={full_q_pred.abs().max().item():.3g}, skipping step")
+            exit()
+
         sq = (full_q_pred - full_q_target) ** 2
-        var = full_q_target.var(unbiased=False).clamp(min=1e-6)
+        var = full_q_target.var(unbiased=False).clamp(min=1.0)
         loss = sq.mean() / var
+        if not loss.isfinite():
+            print(f"[actor] non-finite loss={loss.item():.3g} var={var.item():.3g}, skipping step")
+            exit()
         loss.backward()
+        # grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=10.0)
+        # if grad_norm > 10.0:
+        #     print(f"[actor] grad clipped: norm={grad_norm:.3g}")
         self.optimizer.step()
 
     def save(self):

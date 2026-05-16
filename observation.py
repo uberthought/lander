@@ -22,8 +22,8 @@ def clip_state(state):
 FAILURE_ANGLE = np.pi / 1.5  # quarter turn — past this, the ship is considered to have failed
 FAILURE_Y_MIN = -0.5  # below ground / off the bottom of the operational envelope
 FAILURE_Y_MAX = 2.0   # above the operational ceiling
-LANDING_BONUS = 1.0      # per-step bonus when leg(s) on pad
-LANDING_X_RADIUS = 0.2   # x distance from centerline that counts as "on pad"
+LANDING_BONUS = 0.5      # per-step bonus when leg(s) on pad
+LANDING_X_RADIUS = 0.3   # x distance from centerline that counts as "on pad"
 
 
 def is_done_state(state):
@@ -52,14 +52,37 @@ def calculate_reward(obs):
     sensors = torch.clamp(sensors, 0, 1)
     sensors = 1.0 - sensors
 
-    position = torch.norm(sensors[:, [0, 1]], dim=1) / np.sqrt(2.0)
-    other = torch.norm(sensors[:, [2, 3, 4, 5]], dim=1) / np.sqrt(4.0)
+    # position = torch.norm(sensors[:, [0, 1, 4]], dim=1) / np.sqrt(3.0)
+    # other = torch.norm(sensors[:, [2, 3, 5]], dim=1) / np.sqrt(3.0)
 
     on_pad = obs[:, 0].abs() < LANDING_X_RADIUS
-    # engines_off = obs[:, 9] > 0.5
+    engines_off = obs[:, 9] > 0.5
     left_bonus = LANDING_BONUS * ((obs[:, 6] > 0.5) & on_pad).float()
     right_bonus = LANDING_BONUS * ((obs[:, 7] > 0.5) & on_pad).float()
-    return position * other + left_bonus + right_bonus
+    # engines_penalty = -LANDING_BONUS * engines_off.float()
+    # both_legs_down = (obs[:, 6] > 0.5) & (obs[:, 7] > 0.5)
+    # done_flag = obs[:, 8] > 0.5
+
+    # done but not from a clean two-leg landing on the pad
+    # failure_done = done_flag & ~(both_legs_down & on_pad)
+
+    # result = position * other + left_bonus + right_bonus + engines_penalty
+    # result = position * other + left_bonus + right_bonus
+    # result = torch.norm(torch.stack([position, other, left_bonus, right_bonus]), dim=0) / np.sqrt(4.0)
+
+    # on_screen = (
+    #     (obs[:, 0].abs() <= 1.0) # x within screen bounds
+    #     & (obs[:, 1] >= FAILURE_Y_MIN) # y above the floor
+    #     & (obs[:, 1] <= FAILURE_Y_MAX) # y below the ceiling
+    #     & (obs[:, 4].abs() <= FAILURE_ANGLE) # angle within recoverable bounds
+    #     & ~failure_done
+    # )
+    # result = result * on_screen.to(obs.dtype)
+    # result = torch.clamp(result, 0.0, 1000.0)
+
+
+    result = torch.norm(sensors, dim=-1) / np.sqrt(6.0) + left_bonus + right_bonus
+    return result
 
 def create_observation(prev_state, action, next_state):
     return Observation(prev_state, action, next_state)
