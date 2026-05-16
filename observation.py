@@ -19,7 +19,7 @@ def clip_state(state):
     return np.concatenate([clipped, state[..., 6:]], axis=-1)
 
 
-FAILURE_ANGLE = np.pi / 2  # quarter turn — past this, the ship is considered to have failed
+FAILURE_ANGLE = np.pi / 1.5  # quarter turn — past this, the ship is considered to have failed
 FAILURE_Y_MIN = -0.5  # below ground / off the bottom of the operational envelope
 FAILURE_Y_MAX = 2.0   # above the operational ceiling
 LANDING_BONUS = 1.0      # per-step bonus when leg(s) on pad
@@ -35,8 +35,8 @@ def is_done_state(state):
     if y < FAILURE_Y_MIN or y > FAILURE_Y_MAX:
         return True
     # Both legs touching the ground (landed).
-    if float(state[6]) > 0.5 and float(state[7]) > 0.5:
-        return True
+    # if float(state[6]) > 0.5 and float(state[7]) > 0.5:
+    #     return True
     return False
 
 
@@ -52,14 +52,20 @@ def calculate_reward(obs):
     sensors = torch.clamp(sensors, 0, 1)
     sensors = 1.0 - sensors
 
-    position = torch.norm(sensors[:, [0, 1]], dim=1) / np.sqrt(2.0)
-    other = torch.norm(sensors[:, [2, 3, 4, 5]], dim=1) / np.sqrt(4.0)
+    result = torch.prod(sensors, dim=-1)
+    return result
 
-    on_pad = obs[:, 0].abs() < LANDING_X_RADIUS
-    # engines_off = obs[:, 9] > 0.5
-    left_bonus = LANDING_BONUS * ((obs[:, 6] > 0.5) & on_pad).float()
-    right_bonus = LANDING_BONUS * ((obs[:, 7] > 0.5) & on_pad).float()
-    return position * other + left_bonus + right_bonus
+    # x = sensors[..., 0]
+    # y = sensors[..., 1]
+    # a = sensors[..., 4]
+    # # position = torch.norm(sensors[:, [0, 1]], dim=1) / np.sqrt(2.0)
+    # other = torch.norm(sensors[:, [2, 3, 5]], dim=1) / np.sqrt(3.0)
+
+    # on_pad = obs[:, 0].abs() < LANDING_X_RADIUS
+    # # engines_off = obs[:, 9] > 0.5
+    # left_bonus = LANDING_BONUS * ((obs[:, 6] > 0.5) & on_pad).float()
+    # right_bonus = LANDING_BONUS * ((obs[:, 7] > 0.5) & on_pad).float()
+    # return x * y * a * other + left_bonus + right_bonus
 
 def create_observation(prev_state, action, next_state):
     return Observation(prev_state, action, next_state)
