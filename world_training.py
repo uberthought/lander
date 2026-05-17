@@ -35,7 +35,7 @@ def _is_done(state, t, max_steps):
     return False
 
 
-def _run_imaginary_episode(seed_state, actor_model, world_model, max_steps=10):
+def _run_imaginary_episode(seed_state, actor_model, world_model, max_steps=1000):
     transitions = []
     prev_state = seed_state.copy()
     t = 0
@@ -152,13 +152,17 @@ def train(seconds, rollout_steps, eval_episodes, sample_size):
             elapsed = time.time() - start_time
             print_snr(world_model, world_sample, remain_time=seconds - elapsed, actor_model=actor_model)
 
+            actor_model.save()
+            world_model.save()
+
     actor_model.save()
     world_model.save()
+
     print(f"Done. {iteration} iterations in {seconds}s. Actor saved to {actor_model.model_path}.")
 
-    if eval_episodes > 0:
-        print(f"\nEvaluating fresh-trained actor in real LunarLander-v3 env...")
-        _evaluate_in_real_env(actor_model, eval_episodes)
+    # if eval_episodes > 0:
+    #     print(f"\nEvaluating fresh-trained actor in real LunarLander-v3 env...")
+    #     _evaluate_in_real_env(actor_model, eval_episodes)
 
 
 def main():

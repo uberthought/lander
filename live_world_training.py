@@ -1,140 +1,185 @@
-import argparse
 import os
-import shutil
-import time
-
-import gymnasium as gym
-import numpy as np
 import torch
+import gymnasium as gym
 from gymnasium.wrappers import RecordVideo
+import numpy as np
+import shutil
+import argparse
+from collections import deque
 
-from observation import create_observation, calculate_reward
+from observation import create_observation, is_done_state, calculate_reward, clip_state
 from ReplayBuffer import ReplayBuffer
 from actor import ActorModel
 from world import WorldModel
-from actor_training import _step_action
 from world_training import _run_imaginary_episode
-from offline_training import print_snr
+from offline_training import _actor_stats_str, print_snr
+
+import time
+
+from configuration import POSSIBLE_ACTIONS
+
+CONTINUOUS_STATE_DIM = 6
+VALIDATION_SAMPLE_SIZE = 2 ** 10
+
+def print_actor_snr(actor_model, sample, remain_time=None):
+    prefix = ''
+    if remain_time is not None:
+        prefix = f"Iter t={remain_time:.0f}s "
+    print(prefix + _actor_stats_str(actor_model, sample))
+
+def _compute_snr(state, predicted):
+    state = state[:CONTINUOUS_STATE_DIM]
+    predicted = predicted[:CONTINUOUS_STATE_DIM]
+    signal = np.mean(state ** 2)
+    noise = np.mean((state - predicted) ** 2)
+    if noise == 0 or signal == 0:
+        return 0.0
+    return 10 * np.log10(signal / noise)
+
+def _step_action(action, env):
+    if action == 0:
+        action0 = np.array([0.0, 0.0], dtype=np.float32)
+    elif action == 1:
+        action0 = np.array([0.0, 1.0], dtype=np.float32)
+    elif action == 2:
+        action0 = np.array([1.0, 0.0], dtype=np.float32)
+    elif action == 3:
+        action0 = np.array([0.0, -1.0], dtype=np.float32)
+    next_state, _, done, truncated, _ = env.step(action0)
+    done = done or truncated or is_done_state(next_state)
+    onehot = np.zeros(POSSIBLE_ACTIONS, dtype=np.float32)
+    onehot[action] = 1.0
+    next_state = np.concatenate((next_state, [float(done)], onehot))
+
+    return next_state, done
 
 
-def _save_video(env, video_folder, episode, t, final_state):
-    video_path = f"{video_folder}/{env._video_name}.mp4"
-    env.reset()
-    final_value = calculate_reward(
-        torch.tensor(final_state, dtype=torch.float32).unsqueeze(0)
-    ).item()
-    v_int = int(round(final_value * 10000))
-    target = f"{video_folder}/episode_{episode}_t_{t}_v_{v_int}.mp4"
-    if os.path.exists(video_path):
-        shutil.move(video_path, target)
-    for f in os.listdir(video_folder):
-        if f.endswith(".json"):
-            os.remove(os.path.join(video_folder, f))
-        elif f.startswith("rl-video-episode-") and f.endswith(".mp4"):
-            os.remove(os.path.join(video_folder, f))
-
-
-def train(env, seconds, episodes, sample_size, rollout_steps, video_folder):
+def train(env, seconds, train_every_n_episodes, video_folder):
     actor_model = ActorModel(model_path="checkpoints/actor_model_world.pt", load=True)
     world_model = WorldModel()
-    replay_buffer = ReplayBuffer()
 
-    if len(replay_buffer) == 0:
-        raise RuntimeError("Replay buffer empty - run collect_random_data.py first.")
+    # Main long-term buffer (persistent) and recent buffer for on-policy-ish updates
+    replay_buffer = ReplayBuffer()
+    replay_buffer0 = deque(maxlen=40000)
+    validation_sample = replay_buffer.sample(VALIDATION_SAMPLE_SIZE)
 
     start_time = time.time()
     episode = 0
-
     while time.time() - start_time < seconds:
-        # Collect `episodes` real-env episodes
-        new_transitions = []
-        for _ in range(episodes):
-            if time.time() - start_time >= seconds:
-                break
-            replay_buffer.increment_episode()
-            episode += 1
+        replay_buffer.increment_episode()
+        episode += 1
+        done = False
+        truncated = False
+        t = 0
 
-            prev_state, _ = env.reset()
-            prev_state = np.concatenate((prev_state, [0.0, 1.0, 0.0, 0.0, 0.0]))
-            done = False
-            t = 0
+        prev_state, _ = env.reset()
+        prev_state = np.concatenate((prev_state, [0.0, 1.0, 0.0, 0.0, 0.0]))
 
-            while not done:
-                t += 1
-                action = actor_model.get_best_action(prev_state)
-                next_state, done = _step_action(action, env)
+        do_training = train_every_n_episodes > 0 and episode % train_every_n_episodes == 0
 
-                transition = create_observation(prev_state, action, next_state)
-                replay_buffer.add(transition)
-                new_transitions.append(transition)
+        #########
+        # Live testing loop start
+        #########
 
-                prev_state = next_state
+        while not done:
+            t += 1
+            action = actor_model.get_best_action(prev_state)
+            next_state, done = _step_action(action, env)
 
-            _save_video(env, video_folder, episode, t, prev_state)
+            transition = create_observation(prev_state, action, next_state)
+            replay_buffer.add(transition)
+            replay_buffer0.append(transition)
 
-        # Step 1: train world model on new data + sample of old data
-        old_sample = replay_buffer.sample(len(new_transitions) * sample_size)
-        world_model.train(new_transitions + old_sample)
-
-        # Step 2: collect `episodes` imagined transitions, then train actor on them
-        imagined_transitions = []
-        for i in range(episodes):
-            seed_state = np.array(
-                replay_buffer.sample(1)[0].next_state, dtype=np.float32
-            )
-            transitions = _run_imaginary_episode(
-                seed_state=seed_state,
-                actor_model=actor_model,
-                world_model=world_model,
-                # max_steps=rollout_steps,
-            )
-            imagined_transitions.extend(transitions)
+            prev_state = next_state
+        
+        #########
+        # Live testing loop end
+        #########
 
 
-        # if imagined_transitions:
-        #     actor_model.train(imagined_transitions)
+        # save video with final value in the filename
 
-        actor_model.train(new_transitions + old_sample)
+        video_path = f"{video_folder}/{env._video_name}.mp4"
+        env.reset()
+        final_value = calculate_reward(
+            torch.tensor(prev_state, dtype=torch.float32).unsqueeze(0)
+        ).item()
+        v_int = int(round(final_value * 10000))
+        video_name_with_final_value = f"{video_folder}/episode_{episode+1}_t_{t}_v_{v_int}.mp4"
+        shutil.move(video_path, video_name_with_final_value)
 
-        actor_model.save()
-        world_model.save()
-        try:
-            replay_buffer.save()
-        except Exception as e:
-            print(f"Autosave failed: {e}")
+        # remove every *.json and rl-video-episode-*.mp4 file that's created alongside the video
+        json_files = [f for f in os.listdir(video_folder) if f.endswith(".json")]
+        for json_file in json_files:
+            os.remove(os.path.join(video_folder, json_file))
+        mp4_files = [f for f in os.listdir(video_folder) if f.startswith("rl-video-episode-") and f.endswith(".mp4")]
+        for mp4_file in mp4_files:
+            os.remove(os.path.join(video_folder, mp4_file))
 
-        remain = seconds - (time.time() - start_time)
-        print_snr(world_model, old_sample, remain_time=remain, actor_model=actor_model)
+        # if it's time to train the model, do so
+
+        if do_training:
+            remain = seconds - (time.time() - start_time)
+            print_snr(world_model, replay_buffer0, remain_time=remain, actor_model=actor_model)
+
+            replay_buffer0 = list(replay_buffer0)
+            sample_len = len(replay_buffer0) * 4
+
+            # Step 1: train world model on recent transitions + some random samples from the main buffer
+            start_train_time = time.time()
+            while time.time() - start_train_time < 5:
+                training_sample = replay_buffer.sample(sample_len) + replay_buffer0
+                world_model.train(training_sample)
+
+            # Step 2: collect `episodes` imagined transitions, then train actor on them
+            imagined_transitions = []
+            for i in range(len(replay_buffer0)):
+                seed_state = np.array(
+                    # replay_buffer.sample(1)[0].next_state, dtype=np.float32
+                    replay_buffer0[i].next_state, dtype=np.float32
+                )
+                transitions = _run_imaginary_episode(
+                    seed_state=seed_state,
+                    actor_model=actor_model,
+                    world_model=world_model,
+                    max_steps=10,
+                )
+                imagined_transitions.extend(transitions)
+
+            # Step 3: train actor model on recent real transitions + imagined transitions
+            start_train_time = time.time()
+            while time.time() - start_train_time < 5:
+                actor_model.train(replay_buffer0 + imagined_transitions)
+
+            actor_model.save()
+            world_model.save()
+
+            try:
+                replay_buffer.save()
+            except Exception as e:
+                print(f"Autosave failed: {e}")
+            
+            replay_buffer0 = deque(maxlen=40000)
+
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Live env collection + world-model + imaginary-rollout actor training."
-    )
-    parser.add_argument("--seconds", type=int, default=600, help="Wall-clock budget in seconds")
-    parser.add_argument("--episodes", type=int, default=8, help="Real episodes collected per training cycle; also the imagined-episode count")
-    parser.add_argument("--sample-size", type=int, default=16, help="Multiplier on new-transitions count for the replay-buffer sample size")
-    parser.add_argument("--rollout-steps", type=int, default=1000, help="Max steps per imaginary episode")
-    parser.add_argument("--video-folder", type=str, default="./videos", help="Folder to write MP4 files to")
-    args = parser.parse_args()
+    parser = argparse.ArgumentParser(description="Live training for the LunarLander-v2 environment.")
+    parser.add_argument("--seconds", type=int, default=3600, help="Number of seconds to train")
+    parser.add_argument('--train-every', type=int, default=4, help='Number of episodes between training sessions')
+    seconds = parser.parse_args().seconds
+    train_every = parser.parse_args().train_every
 
     np.set_printoptions(formatter={'float': lambda x: "{0:+0.4f}".format(x)})
-    shutil.rmtree(args.video_folder, ignore_errors=True)
+
+    shutil.rmtree("./videos", ignore_errors=True)
 
     env = gym.make("LunarLander-v3", continuous=True, render_mode="rgb_array")
-    env = RecordVideo(env, video_folder=args.video_folder, episode_trigger=lambda x: True, disable_logger=True)
-    try:
-        train(
-            env,
-            args.seconds,
-            args.episodes,
-            args.sample_size,
-            args.rollout_steps,
-            args.video_folder,
-        )
-    finally:
-        env.close()
+    env = RecordVideo(env, video_folder="./videos", episode_trigger=lambda x: True, disable_logger=True)
 
+    train(env, seconds, train_every, video_folder="./videos")
+
+    env.close()
 
 if __name__ == "__main__":
     main()

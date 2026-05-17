@@ -47,14 +47,24 @@ class ActorModel:
     def __init__(self, model_path="checkpoints/actor_model.pt", load=True):
         self.model_path = model_path
         self.possible_actions = POSSIBLE_ACTIONS
-        self.discount_factor = 0.97
+        self.discount_factor = 0.997
 
         self.device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 
         self.model = ActorNet(POSSIBLE_ACTIONS, NODE_COUNT, LAYER_COUNT)
         self.optimizer = optim.AdamW(self.model.parameters())
 
+        self.target_model = ActorNet(POSSIBLE_ACTIONS, NODE_COUNT, LAYER_COUNT)
+        self.target_model.load_state_dict(self.model.state_dict())
+        for p in self.target_model.parameters():
+            p.requires_grad_(False)
+        self.target_model.to(self.device)
+        self.target_model.eval()
+        self.tau = 0.05
+
         self._load(load)
+        self.target_model.load_state_dict(self.model.state_dict())
+        self.target_model.to(self.device)
 
     def _load(self, load):
         if load and os.path.exists(self.model_path):
@@ -90,7 +100,7 @@ class ActorModel:
         states_1_tile = states_1.unsqueeze(1).repeat(1, self.possible_actions, 1)
 
         with torch.no_grad():
-            next_full_q = self.model(states_1_tile, actions_1_onehot).squeeze(-1)  # (B, A)
+            next_full_q = self.target_model(states_1_tile, actions_1_onehot).squeeze(-1)  # (B, A)
             future_rewards = next_full_q.max(dim=1)[0].unsqueeze(-1)               # (B, 1)
 
             prev_rewards = calculate_reward(states_0_full).view(-1, 1)
@@ -120,7 +130,7 @@ class ActorModel:
         states_1_tile = states_1.unsqueeze(1).repeat(1, self.possible_actions, 1)
 
         with torch.no_grad():
-            next_full_q = self.model(states_1_tile, actions_1_onehot).squeeze(-1)
+            next_full_q = self.target_model(states_1_tile, actions_1_onehot).squeeze(-1)
             future_rewards = next_full_q.max(dim=1)[0].unsqueeze(-1)
             prev_rewards = calculate_reward(states_0_full).view(-1, 1)
             current_rewards = calculate_reward(states_1_full).view(-1, 1)
@@ -131,11 +141,13 @@ class ActorModel:
 
         self.optimizer.zero_grad()
         full_q_pred = self.model(states_0, actions_onehot)  # (B, 1)
-        sq = (full_q_pred - full_q_target) ** 2
-        var = full_q_target.var(unbiased=False).clamp(min=1e-6)
-        loss = sq.mean() / var
+        loss = F.smooth_l1_loss(full_q_pred, full_q_target)
         loss.backward()
         self.optimizer.step()
+
+        with torch.no_grad():
+            for tp, p in zip(self.target_model.parameters(), self.model.parameters()):
+                tp.data.mul_(1 - self.tau).add_(p.data, alpha=self.tau)
 
     def save(self):
         fd, tmp_path = tempfile.mkstemp(prefix='.tmp_actor_', suffix='.pt', dir=os.path.dirname(self.model_path) or '.')

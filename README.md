@@ -6,7 +6,8 @@ For agent-oriented architecture notes, see [CLAUDE.md](CLAUDE.md).
 
 ## Architecture
 
-- **`actor.py`** — `ActorModel`. Single scalar Q-value head per `(state, action)`. Trained against a potential-shaped self-bootstrap target: for non-terminal transitions `target = r(s₁) + γ·r(s₁) − r(s₀) + γ·max_a' Q(s₁,a')`; on terminal `target = r(s₁)`. Variance-normalized MSE loss.
+- **`actor.py`** — `ActorModel`. Single scalar Q-value head per `(state, action)`. Trained against a target-network-bootstrapped, potential-shaped target: for non-terminal transitions `target = r(s₁) + γ·r(s₁) − r(s₀) + γ·max_a' Q_target(s₁,a')`; on terminal `target = r(s₁)`. Smooth L1 (Huber) loss; target network updated by Polyak averaging.
+- **`world.py`** — `WorldModel`. Predicts next-state delta from `(state, action)`. Huber loss. Used by `world_training.py` / `live_world_training.py` to roll out imaginary episodes for actor training.
 
 All Python lives flat at the project root. Run scripts from there.
 
@@ -27,6 +28,13 @@ python3 offline_training.py --seconds 60 --sample-size 16   # 2^16 transitions
 
 # Live training (collects on-policy transitions while training)
 python3 actor_training.py   --seconds 600 --train-every 4
+
+# World-model training (offline) and combined live actor + world-model training
+python3 world_training.py      --seconds 600 --rollout-steps 1000 --eval-episodes 10 --sample-size 16
+python3 live_world_training.py --seconds 3600 --train-every 4
+
+# Evaluation: load a checkpoint and record episode videos
+python3 play_actor.py --model-path checkpoints/actor_model_world.pt --episodes 10
 
 # Tests / cleanup
 python3 test_ReplayBuffer.py
@@ -52,7 +60,7 @@ bash clean.sh                                                # wipes checkpoints
 | `LAYER_COUNT` | 16 | Number of `SkipBlock`s |
 | `NODE_COUNT` | 64 | Hidden width |
 
-`discount_factor = 0.97` is defined in the model files, not in `configuration.py`.
+`discount_factor = 0.997` and target-network `tau = 0.05` are defined in `actor.py`, not in `configuration.py`. `WORLD_LOSS_DELTA = 1.0` (Huber delta for `WorldModel`) is in `configuration.py`.
 
 ## Understanding Training Output
 
