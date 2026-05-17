@@ -35,9 +35,8 @@ def _is_done(state, t, max_steps):
     return False
 
 
-def _run_imaginary_episode(seed_state, actor_model, world_model, max_steps, episode_id):
+def _run_imaginary_episode(seed_state, actor_model, world_model, max_steps=10):
     transitions = []
-    rewards = []
     prev_state = seed_state.copy()
     t = 0
 
@@ -55,7 +54,6 @@ def _run_imaginary_episode(seed_state, actor_model, world_model, max_steps, epis
         transitions.append(create_observation(prev_state, action, next_state))
 
         next_tensor = torch.tensor(next_state, dtype=torch.float32).unsqueeze(0)
-        # rewards.append(calculate_reward(next_tensor).item())
 
         prev_state = next_state
         if done:
@@ -123,9 +121,6 @@ def train(seconds, rollout_steps, eval_episodes, sample_size):
             "Replay buffer is empty — run collect_random_data.py first."
         )
 
-    recent_rewards = deque(maxlen=50)
-    recent_lengths = deque(maxlen=50)
-
     start_time = time.time()
     iteration = 0
     imagined_transitions = []
@@ -137,14 +132,12 @@ def train(seconds, rollout_steps, eval_episodes, sample_size):
         world_model.train(world_sample)
 
         seed_state = np.array(replay_buffer.sample(1)[0].next_state, dtype=np.float32)
-        episode_id = replay_buffer.max_episode + iteration
 
         transitions = _run_imaginary_episode(
             seed_state=seed_state,
             actor_model=actor_model,
             world_model=world_model,
-            max_steps=rollout_steps,
-            episode_id=episode_id,
+            # max_steps=rollout_steps
         )
         imagined_transitions.extend(transitions)
 

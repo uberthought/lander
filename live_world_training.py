@@ -86,8 +86,7 @@ def train(env, seconds, episodes, sample_size, rollout_steps, video_folder):
                 seed_state=seed_state,
                 actor_model=actor_model,
                 world_model=world_model,
-                max_steps=rollout_steps,
-                episode_id=replay_buffer.max_episode + i,
+                # max_steps=rollout_steps,
             )
             imagined_transitions.extend(transitions)
 
