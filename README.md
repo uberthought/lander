@@ -60,7 +60,7 @@ bash clean.sh                                                # wipes checkpoints
 | `LAYER_COUNT` | 16 | Number of `SkipBlock`s |
 | `NODE_COUNT` | 64 | Hidden width |
 
-`discount_factor = 0.997` and target-network `tau = 0.05` are defined in `actor.py`, not in `configuration.py`. `WORLD_LOSS_DELTA = 1.0` (Huber delta for `WorldModel`) is in `configuration.py`.
+`DISCOUNT_FACTOR = 0.997`, target-network `TAU = 0.05`, `ACTION_SHARPENING = 100`, and `WORLD_LOSS_DELTA = 1.0` (Huber delta for `WorldModel`) all live in `configuration.py`.
 
 ## Understanding Training Output
 

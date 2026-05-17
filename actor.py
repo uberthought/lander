@@ -6,7 +6,7 @@ import numpy as np
 import os
 import tempfile
 
-from configuration import POSSIBLE_ACTIONS, LAYER_COUNT, NODE_COUNT, STATE_SIZE
+from configuration import POSSIBLE_ACTIONS, LAYER_COUNT, NODE_COUNT, STATE_SIZE, DISCOUNT_FACTOR, TAU, ACTION_SHARPENING
 from observation import calculate_reward, clip_state
 
 
@@ -47,7 +47,7 @@ class ActorModel:
     def __init__(self, model_path="checkpoints/actor_model.pt", load=True):
         self.model_path = model_path
         self.possible_actions = POSSIBLE_ACTIONS
-        self.discount_factor = 0.997
+        self.discount_factor = DISCOUNT_FACTOR
 
         self.device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 
@@ -60,7 +60,7 @@ class ActorModel:
             p.requires_grad_(False)
         self.target_model.to(self.device)
         self.target_model.eval()
-        self.tau = 0.05
+        self.tau = TAU
 
         self._load(load)
         self.target_model.load_state_dict(self.model.state_dict())
@@ -177,6 +177,6 @@ class ActorModel:
             full_q = self.model(state_expanded, actions_1_onehot).squeeze(-1)  # (1, A)
 
         probs = F.softmax(full_q, dim=1)
-        probs = F.softmax(probs * 100, dim=1)
+        probs = F.softmax(probs * ACTION_SHARPENING, dim=1)
         best_action_index = torch.multinomial(probs, num_samples=1).squeeze(1)
         return actions_1[best_action_index].item()

@@ -85,9 +85,9 @@ target_full_Q = r(s₁) + [γ · r(s₁) − r(s₀)] + γ · max_a' Q(s₁, a')
 target_full_Q = r(s₁)                                                # terminal (done flag set)
 ```
 
-with `discount_factor = 0.997` (`actor.py:50`). The reward function stays explicit on the `s₁` side; the bootstrap absorbs the shaping potential `γ·r(s₁) − r(s₀)`. Loss is Smooth L1 / Huber via `F.smooth_l1_loss(pred, target)` (`actor.py:144`).
+with `DISCOUNT_FACTOR = 0.997` (`configuration.py`, read into `self.discount_factor` at `actor.py:50`). The reward function stays explicit on the `s₁` side; the bootstrap absorbs the shaping potential `γ·r(s₁) − r(s₀)`. Loss is Smooth L1 / Huber via `F.smooth_l1_loss(pred, target)` (`actor.py:144`).
 
-**Target network.** `ActorModel` keeps a frozen `target_model` updated by Polyak averaging with `tau = 0.05` after every gradient step (`actor.py:57-63, 149-150`). The `max_a' Q(s₁, a')` term above is evaluated against `target_model`, not the online net (`actor.py:103, 133`).
+**Target network.** `ActorModel` keeps a frozen `target_model` updated by Polyak averaging with `TAU = 0.05` (`configuration.py`) after every gradient step (`actor.py:57-63, 149-150`). The `max_a' Q(s₁, a')` term above is evaluated against `target_model`, not the online net (`actor.py:103, 133`).
 
 ### World model (`world.py`)
 
@@ -113,13 +113,16 @@ Per-cycle output is one line via `print_actor_snr` (`Iter t=Xs Actor-Q SNR=… p
 | `LAYER_COUNT` | 16 | Number of `SkipBlock`s in the trunk |
 | `NODE_COUNT` | 64 | Hidden width |
 | `WORLD_LOSS_DELTA` | 1.0 | Huber-loss `delta` for `WorldModel` (`world.py:62`) |
+| `DISCOUNT_FACTOR` | 0.997 | Actor Q-learning discount factor γ (`actor.py:50`) |
+| `TAU` | 0.05 | Polyak averaging rate for `ActorModel.target_model` (`actor.py:63, 149-150`) |
+| `ACTION_SHARPENING` | 100 | Softmax temperature multiplier in `get_best_action` (`actor.py:180`) |
 
-Hyperparameters defined in model files (not configuration.py): `discount_factor = 0.997` and target-network `tau = 0.05` (actor.py); actor uses AdamW defaults; `WorldModel` uses AdamW with `lr=0.001` (`world.py:61`).
+Hyperparameters not in `configuration.py`: actor uses AdamW defaults; `WorldModel` uses AdamW with `lr=0.001` (`world.py:61`).
 
 ### Conventions
 
 - **Device**: auto-selects MPS (Apple Silicon) → CPU fallback. Models, tensors, and loaded checkpoints all `.to(self.device)`; loading from a checkpoint saved on a different device requires `map_location`.
-- **Action sampling** in `get_best_action`: `softmax(softmax(full_q) * 100)` then `multinomial` — a sharpened temperature trick that's near-greedy but keeps exploration alive.
+- **Action sampling** in `get_best_action`: `softmax(softmax(full_q) * ACTION_SHARPENING)` then `multinomial` — a sharpened temperature trick that's near-greedy but keeps exploration alive.
 - **Validation metric**: SNR (dB) per dim = `10·log10(signal / noise)` over the masked validation sample — higher is better dynamics accuracy.
 - **Observation namedtuple**: `Observation(prev_state, action, next_state)` — `action` is a single int 0–3, not a tuple.
 - **Atomic writes**: every persistent artifact (replay buffer metadata, model `.pt`) writes to a temp file then `os.replace()`s into place. Never write directly to a final path.
