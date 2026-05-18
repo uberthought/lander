@@ -7,7 +7,7 @@ For agent-oriented architecture notes, see [CLAUDE.md](CLAUDE.md).
 ## Architecture
 
 - **`actor.py`** — `ActorModel`. Single scalar Q-value head per `(state, action)`. Trained against a target-network-bootstrapped, potential-shaped target: for non-terminal transitions `target = r(s₁) + γ·r(s₁) − r(s₀) + γ·max_a' Q_target(s₁,a')`; on terminal `target = r(s₁)`. Smooth L1 (Huber) loss; target network updated by Polyak averaging.
-- **`world.py`** — `WorldModel`. Predicts next-state delta from `(state, action)`. Huber loss. Used by `world_training.py` / `live_world_training.py` to roll out imaginary episodes for actor training.
+- **`world.py`** — `WorldModel`. Splits its 13-dim output: `[:6]` is a continuous next-state delta trained with Huber loss; `[6:13]` is logits for the boolean dims (legs, done, prev-action one-hot) trained with BCE-with-logits. Total = `Huber + BOOL_LOSS_WEIGHT * BCE`. Used by `world_training.py` / `live_world_training.py` to roll out imaginary episodes for actor training.
 
 All Python lives flat at the project root. Run scripts from there.
 
@@ -60,7 +60,7 @@ bash clean.sh                                                # wipes checkpoints
 | `LAYER_COUNT` | 16 | Number of `SkipBlock`s |
 | `NODE_COUNT` | 64 | Hidden width |
 
-`DISCOUNT_FACTOR = 0.997`, target-network `TAU = 0.05`, `ACTION_SHARPENING = 100`, and `WORLD_LOSS_DELTA = 1.0` (Huber delta for `WorldModel`) all live in `configuration.py`.
+`DISCOUNT_FACTOR = 0.997`, target-network `TAU = 0.05`, `ACTION_SHARPENING = 100`, `WORLD_LOSS_DELTA = 1.0` (Huber delta for `WorldModel`'s continuous head), and `BOOL_LOSS_WEIGHT = 1.0` (multiplier on the BCE term in `WorldModel`'s total loss) all live in `configuration.py`.
 
 ## Understanding Training Output
 

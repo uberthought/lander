@@ -6,7 +6,7 @@ import numpy as np
 import os
 import tempfile
 
-from configuration import POSSIBLE_ACTIONS, LAYER_COUNT, NODE_COUNT, WORLD_LOSS_DELTA, STATE_SIZE
+from configuration import POSSIBLE_ACTIONS, LAYER_COUNT, NODE_COUNT, WORLD_LOSS_DELTA, BOOL_LOSS_WEIGHT, STATE_SIZE
 from observation import clip_state
 
 
@@ -59,7 +59,9 @@ class WorldModel:
 
         self.model = WorldNet(POSSIBLE_ACTIONS, NODE_COUNT, LAYER_COUNT)
         self.optimizer = optim.AdamW(self.model.parameters(), lr=0.001)
-        self.criterion = nn.HuberLoss(delta=WORLD_LOSS_DELTA, reduction='none')
+        # Output is interpreted as: [:, :6] continuous next-state delta, [:, 6:13] logits for boolean dims.
+        self.cont_criterion = nn.HuberLoss(delta=WORLD_LOSS_DELTA)
+        self.bool_criterion = nn.BCEWithLogitsLoss()
 
         if os.path.exists(self.model_path):
             checkpoint = torch.load(self.model_path, map_location="mps" if torch.backends.mps.is_available() else "cpu")
@@ -84,24 +86,29 @@ class WorldModel:
         states_1_full = torch.tensor(np.array([obs.next_state for obs in observations]), dtype=torch.float32, device=self.device)
 
         # Terminal/contact transitions produce unpredictable va spikes from collision
-        # impulses the model can't see — filter them out
+        # impulses the model can't see — filter them out for the continuous head only.
+        # The bool head specifically needs these transitions to learn flips.
         leg_changed = (states_0_full[:, 6:8] != states_1_full[:, 6:8]).any(dim=1)
         done_transition = states_1_full[:, 8] > 0.5
-        mask = ~(leg_changed | done_transition)
-        actions = actions[mask]
-        states_0 = clip_state(states_0_full[mask])
-        states_1 = clip_state(states_1_full[mask])
+        cont_mask = ~(leg_changed | done_transition)
 
-        if actions.shape[0] == 0:
-            return
-
-        delta = states_1 - states_0
+        states_0_clipped = clip_state(states_0_full)
+        states_1_clipped = clip_state(states_1_full)
         actions_hot = F.one_hot(actions, num_classes=POSSIBLE_ACTIONS).float()
 
         self.optimizer.zero_grad()
-        prediction = self.model(states_0, actions_hot)
-        losses = self.criterion(prediction, delta)
-        loss = losses.mean()
+        prediction = self.model(states_0_clipped, actions_hot)
+
+        bool_target = states_1_full[:, 6:13]
+        bool_loss = self.bool_criterion(prediction[:, 6:13], bool_target)
+
+        if cont_mask.any():
+            cont_delta = (states_1_clipped[cont_mask, :6] - states_0_clipped[cont_mask, :6])
+            cont_loss = self.cont_criterion(prediction[cont_mask, :6], cont_delta)
+            loss = cont_loss + BOOL_LOSS_WEIGHT * bool_loss
+        else:
+            loss = BOOL_LOSS_WEIGHT * bool_loss
+
         loss.backward()
         self.optimizer.step()
 
@@ -135,8 +142,10 @@ class WorldModel:
             state_tensor = torch.tensor(states_np, dtype=torch.float32, device=self.device)
             actions_tensor = torch.tensor(np.array(actions), dtype=torch.long, device=self.device)
             actions_hot = F.one_hot(actions_tensor, num_classes=POSSIBLE_ACTIONS).float()
-            delta = self.model(state_tensor, actions_hot)
-            return (state_tensor + delta).cpu().numpy()
+            output = self.model(state_tensor, actions_hot)
+            next_cont = state_tensor[:, :6] + output[:, :6]
+            next_bool = torch.sigmoid(output[:, 6:13])
+            return torch.cat([next_cont, next_bool], dim=-1).cpu().numpy()
 
     def predict(self, state, action):
         return self.predict_batch([state], [action])[0]

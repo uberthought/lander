@@ -91,7 +91,17 @@ with `DISCOUNT_FACTOR = 0.997` (`configuration.py`, read into `self.discount_fac
 
 ### World model (`world.py`)
 
-`WorldModel` predicts the next-state delta from `(state, action)` using the same SkipBlock trunk as the actor. Loss is `nn.HuberLoss(delta=WORLD_LOSS_DELTA, reduction='none')` then meaned (`world.py:62, 103-104`). Before training, transitions where either leg flag flips or the `done` bit fires are filtered out (`world.py:88-96`) — collision impulses produce velocity spikes the model can't see in the input. `predict_batch` returns `state + delta`. Default checkpoint path is `checkpoints/world_model.pt`.
+`WorldModel` shares the SkipBlock trunk with the actor but splits its 13-dim output by format:
+
+- `output[:, :6]` is a **continuous delta** added back to the input state. Loss: `nn.HuberLoss(delta=WORLD_LOSS_DELTA)` (`world.py:64`).
+- `output[:, 6:13]` is **logits** predicting the next-state boolean dims (legs `[6:8]`, done `[8]`, prev-action one-hot `[9:13]`) directly — not a delta. Loss: `nn.BCEWithLogitsLoss()` (`world.py:65`).
+- Total: `cont_loss + BOOL_LOSS_WEIGHT * bool_loss` (`world.py:108-111`).
+
+The leg-flip / done-fire filter (`world.py:88-90`) applies to the **continuous loss only**: collision impulses corrupt velocity targets but the bool head specifically needs flip transitions to learn them. The bool loss is taken over the entire batch.
+
+`predict_batch` returns `[state[:6] + delta_cont, sigmoid(logits)]` concatenated (`world.py:135-142`). Downstream consumers that need hard 0/1 should threshold themselves; `_run_imaginary_episode` (`world_training.py:47-52`) overwrites `[6:13]` anyway. The load-bearing consumer of the bool dims is `calculate_reward` reading leg flags at `observation.py:65-66`.
+
+Default checkpoint path: `checkpoints/world_model.pt`.
 
 ### Storage
 
@@ -112,7 +122,8 @@ Per-cycle output is one line via `print_actor_snr` (`Iter t=Xs Actor-Q SNR=… p
 | `POSSIBLE_ACTIONS` | 4 | Flat discrete action count |
 | `LAYER_COUNT` | 16 | Number of `SkipBlock`s in the trunk |
 | `NODE_COUNT` | 64 | Hidden width |
-| `WORLD_LOSS_DELTA` | 1.0 | Huber-loss `delta` for `WorldModel` (`world.py:62`) |
+| `WORLD_LOSS_DELTA` | 1.0 | Huber-loss `delta` for `WorldModel` continuous head (`world.py:64`) |
+| `BOOL_LOSS_WEIGHT` | 1.0 | Multiplier on the BCE term in `WorldModel`'s total loss (`world.py:111`) |
 | `DISCOUNT_FACTOR` | 0.997 | Actor Q-learning discount factor γ (`actor.py:50`) |
 | `TAU` | 0.05 | Polyak averaging rate for `ActorModel.target_model` (`actor.py:63, 149-150`) |
 | `ACTION_SHARPENING` | 100 | Softmax temperature multiplier in `get_best_action` (`actor.py:180`) |

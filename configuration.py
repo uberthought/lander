@@ -6,6 +6,7 @@ LAYER_COUNT = 16 # Number of layers in the model
 NODE_COUNT = 64 # Number of nodes per layer
 
 WORLD_LOSS_DELTA = 1.0 # Huber loss delta for WorldModel
+BOOL_LOSS_WEIGHT = 1.0 # Weight of the BCE term vs Huber in WorldModel total loss
 
 DISCOUNT_FACTOR = 0.997 # Actor Q-learning discount factor (gamma)
 TAU = 0.05 # Polyak averaging rate for ActorModel.target_model
