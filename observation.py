@@ -57,9 +57,9 @@ def calculate_reward(obs):
 
     x = sensors[..., 0]
     y = sensors[..., 1]
-    # a = sensors[..., 4]
+    a = sensors[..., 4]
     # position = torch.norm(sensors[:, [0, 1]], dim=1) / np.sqrt(2.0)
-    other = torch.norm(sensors[:, [2, 3, 4, 5]], dim=1) / np.sqrt(4.0)
+    other = torch.norm(sensors[:, [2, 3, 5]], dim=1) / np.sqrt(3.0)
 
     # on_pad = obs[:, 0].abs() < LANDING_X_RADIUS
     # # engines_off = obs[:, 9] > 0.5
@@ -67,7 +67,7 @@ def calculate_reward(obs):
     # right_bonus = LANDING_BONUS * ((obs[:, 7] > 0.5) & on_pad).float()
     # return x * y * a * other + left_bonus + right_bonus
 
-    return x * y * other
+    return x * y * a * other
 
 def create_observation(prev_state, action, next_state):
     return Observation(prev_state, action, next_state)
