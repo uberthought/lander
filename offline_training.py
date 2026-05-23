@@ -3,8 +3,10 @@ import argparse
 
 from ReplayBuffer import ReplayBuffer
 from actor import ActorModel
-from observation import calculate_reward
+from observation import calculate_reward, clip_state
 from world import WorldModel
+
+WORLD_DIM_LABELS = ['x', 'y', 'vx', 'vy', 'ang', 'vang', 'lLeg', 'rLeg', 'done', 'a0', 'a1', 'a2', 'a3']
 
 def compute_world_value_snr(world_model, validation_sample):
     import torch
@@ -29,12 +31,35 @@ def compute_world_value_snr(world_model, validation_sample):
     return snr, mse, float(np.mean(predicted_reward)), float(np.mean(actual_reward))
 
 
+def compute_world_per_dim_snr(world_model, validation_sample):
+    import torch
+    states_0 = np.array([obs.prev_state for obs in validation_sample], dtype=np.float32)
+    states_1 = np.array([obs.next_state for obs in validation_sample], dtype=np.float32)
+    actions = np.array([int(obs.action) for obs in validation_sample], dtype=np.int64)
+
+    predicted = world_model.predict_batch(states_0, actions)  # [N, 13]
+    # Match training space: continuous head learns clipped delta, so compare in clipped space.
+    target = clip_state(states_1)
+
+    results = []
+    for d in range(predicted.shape[1]):
+        pred_d = predicted[:, d]
+        tgt_d = target[:, d]
+        mse = float(np.mean((pred_d - tgt_d) ** 2))
+        signal = float(np.mean(tgt_d ** 2))
+        snr = 0.0 if mse == 0 or signal == 0 else 10 * np.log10(signal / mse)
+        results.append((WORLD_DIM_LABELS[d], snr))
+    return results
+
+
 def print_snr(world_model, training_sample, remain_time=None, actor_model=None):
     prefix = ''
     if remain_time is not None:
         prefix = f"Iter t={remain_time:.0f}s "
     v_snr, _, _, _ = compute_world_value_snr(world_model, training_sample)
-    sections = [f"World SNR={v_snr:.1f}"]
+    per_dim = compute_world_per_dim_snr(world_model, training_sample)
+    per_dim_str = ' '.join(f"{label}={snr:.1f}" for label, snr in per_dim)
+    sections = [f"World SNR={v_snr:.1f} {per_dim_str}"]
     if actor_model is not None:
         sections.append(_actor_stats_str(actor_model, training_sample))
     print(prefix + ' | '.join(sections))
