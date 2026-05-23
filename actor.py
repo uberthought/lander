@@ -18,12 +18,11 @@ class SkipBlock(nn.Module):
         self.block2 = nn.Linear(nodes, nodes)
         self.relu2 = nn.LeakyReLU()
 
-    def forward(self, input):
-        s = input
-        x = self.block1(input)
+    def forward(self, x, input):
+        x = self.block1(x)
         x = self.relu1(x)
         x = self.block2(x)
-        x = x + s
+        x = x + input
         return self.relu2(x)
 
 
@@ -34,12 +33,21 @@ class ActorNet(nn.Module):
         self.sensors_input = nn.Linear(STATE_SIZE, nodes)
         self.action_input = nn.Linear(action_dim, nodes)
         self.skip_layers = nn.ModuleList([SkipBlock(nodes) for _ in range(layers)])
+        self.block1 = nn.Linear(nodes, nodes)
+        self.relu1 = nn.LeakyReLU()
+        self.block2 = nn.Linear(nodes, nodes)
+        self.relu2 = nn.LeakyReLU()
         self.output = nn.Linear(nodes, 1)
 
     def forward(self, state, action):
-        x = self.sensors_input(state) + self.action_input(action)
+        input = self.sensors_input(state) + self.action_input(action)
+        x = input
         for i in range(self.layers):
-            x = self.skip_layers[i](x)
+            x = self.skip_layers[i](x, input)
+        x = self.block1(x)
+        x = self.relu1(x)
+        x = self.block2(x)
+        x = self.relu2(x)
         return self.output(x)
 
 
