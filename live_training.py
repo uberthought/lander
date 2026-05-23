@@ -20,21 +20,6 @@ from configuration import POSSIBLE_ACTIONS
 CONTINUOUS_STATE_DIM = 6
 VALIDATION_SAMPLE_SIZE = 2 ** 10
 
-def print_actor_snr(actor_model, sample, remain_time=None):
-    prefix = ''
-    if remain_time is not None:
-        prefix = f"Iter t={remain_time:.0f}s "
-    print(prefix + _actor_stats_str(actor_model, sample))
-
-def _compute_snr(state, predicted):
-    state = state[:CONTINUOUS_STATE_DIM]
-    predicted = predicted[:CONTINUOUS_STATE_DIM]
-    signal = np.mean(state ** 2)
-    noise = np.mean((state - predicted) ** 2)
-    if noise == 0 or signal == 0:
-        return 0.0
-    return 10 * np.log10(signal / noise)
-
 def _step_action(action, env):
     if action == 0:
         action0 = np.array([0.0, 0.0], dtype=np.float32)
