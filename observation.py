@@ -35,8 +35,8 @@ def is_done_state(state):
     if y < FAILURE_Y_MIN or y > FAILURE_Y_MAX:
         return True
     # Any legs touching the ground (landed).
-    if float(state[6]) > 0.5 or float(state[7]) > 0.5:
-        return True
+    # if float(state[6]) > 0.5 or float(state[7]) > 0.5:
+    #     return True
     return False
 
 
