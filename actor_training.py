@@ -23,7 +23,8 @@ def print_actor_snr(actor_model, sample, remain_time=None):
     prefix = ''
     if remain_time is not None:
         prefix = f"Iter t={remain_time:.0f}s "
-    print(prefix + actor_stats_str(actor_model, sample))
+    text, _, _ = actor_stats_str(actor_model, sample)
+    print(prefix + text)
 
 def step_action(action, env):
     if action == 0:

@@ -2,8 +2,8 @@ STATE_SIZE = 13 # Size of the state vector: 8 from env + done + 4 one-hot prev a
 CONTINUOUS_STATE_DIM = 6 # Continuous sensor dims (x, y, vx, vy, angle, vangle)
 POSSIBLE_ACTIONS = 4 # Number of possible actions per step
 
-LAYER_COUNT = 16 # Number of layers in the model
-NODE_COUNT = 64 # Number of nodes per layer
+LAYER_COUNT = 32 # Number of layers in the model
+NODE_COUNT = 256 # Number of nodes per layer
 
 WORLD_LOSS_DELTA = 1.0 # Huber loss delta for WorldModel
 BOOL_LOSS_WEIGHT = 1.0 # Weight of the BCE term vs Huber in WorldModel total loss

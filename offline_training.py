@@ -54,6 +54,8 @@ def compute_world_per_dim_snr(world_model, validation_sample):
 
 
 def print_snr(world_model, training_sample, remain_time=None, actor_model=None):
+    import live_plot
+
     prefix = ''
     if remain_time is not None:
         prefix = f"Iter t={remain_time:.0f}s "
@@ -61,9 +63,19 @@ def print_snr(world_model, training_sample, remain_time=None, actor_model=None):
     per_dim = compute_world_per_dim_snr(world_model, training_sample)
     per_dim_str = ' '.join(f"{label}={snr:.1f}" for label, snr in per_dim)
     sections = [f"World SNR={v_snr:.1f} {per_dim_str}"]
+    actor_pred = None
+    actor_tgt = None
     if actor_model is not None:
-        sections.append(actor_stats_str(actor_model, training_sample))
+        text, actor_pred, actor_tgt = actor_stats_str(actor_model, training_sample)
+        sections.append(text)
     print(prefix + ' | '.join(sections))
+
+    live_plot.record(
+        world_snr=v_snr,
+        per_dim=per_dim,
+        actor_pred=actor_pred if actor_pred is not None else float('nan'),
+        actor_tgt=actor_tgt if actor_tgt is not None else float('nan'),
+    )
 
 
 def actor_stats_str(actor_model, training_sample):
@@ -73,7 +85,9 @@ def actor_stats_str(actor_model, training_sample):
 
     pred = prediction[:, 0]
     tgt = targets[:, 0]
-    return f"Actor-Q pred={pred.mean().item():+.3f} tgt={tgt.mean().item():+.3f}"
+    pred_mean = pred.mean().item()
+    tgt_mean = tgt.mean().item()
+    return f"Actor-Q pred={pred_mean:+.3f} tgt={tgt_mean:+.3f}", pred_mean, tgt_mean
 
 
 def main():
