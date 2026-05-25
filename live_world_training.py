@@ -40,7 +40,7 @@ def _step_action(action, env):
 
 
 def train(env, seconds, train_every_n_episodes, video_folder):
-    actor_model = ActorModel(model_path="checkpoints/actor_model_world.pt", load=True)
+    actor_model = ActorModel(model_path="checkpoints/actor_model.pt", load=True)
     world_model = WorldModel()
 
     # Main long-term buffer (persistent) and recent buffer for on-policy-ish updates
@@ -120,21 +120,22 @@ def train(env, seconds, train_every_n_episodes, video_folder):
             imagined_transitions = []
             for i in range(len(replay_buffer0)):
                 seed_state = np.array(
-                    # replay_buffer.sample(1)[0].next_state, dtype=np.float32
-                    replay_buffer0[i].next_state, dtype=np.float32
+                    replay_buffer.sample(1)[0].next_state, dtype=np.float32
+                    # replay_buffer0[i].next_state, dtype=np.float32
                 )
                 transitions = run_imaginary_episode(
                     seed_state=seed_state,
                     actor_model=actor_model,
                     world_model=world_model,
-                    max_steps=10,
+                    max_steps=4,
                 )
                 imagined_transitions.extend(transitions)
 
             # Step 3: train actor model on recent real transitions + imagined transitions
             start_train_time = time.time()
             while time.time() - start_train_time < 5:
-                actor_model.train(replay_buffer0 + imagined_transitions)
+                training_sample = replay_buffer.sample(sample_len) + replay_buffer0 + imagined_transitions
+                actor_model.train(training_sample)
 
             actor_model.save()
             world_model.save()
