@@ -45,26 +45,25 @@ def calculate_reward(obs):
         obs = torch.tensor(obs, dtype=torch.float32)
     assert obs.shape[-1] == STATE_SIZE, f"calculate_reward expected last dim {STATE_SIZE}, got {obs.shape[-1]}"
 
-    NORMALIZATION_FACTORS = np.array([1, 1.75, 4, 4, 3.1415927, 5], dtype=np.float32)
+    NORMALIZATION_FACTORS = np.array([1, 1.75, 2.5, 2.5, 3.1415927, 5], dtype=np.float32)
     norm = torch.tensor(NORMALIZATION_FACTORS, dtype=obs.dtype, device=obs.device)
-    sensors = clip_state(obs)[..., :6] / norm
+    sensors = clip_state(obs)
+    sensors = sensors[..., :6] / norm
     sensors = torch.abs(sensors)
-    sensors = torch.clamp(sensors, 0, 1)
     sensors = 1.0 - sensors
+    sensors = torch.clamp(sensors, 0, 1)
     done = obs[:, 8] > 0.5
-
-    x = sensors[..., 0]
-    y = sensors[..., 1]
-    a = sensors[..., 4]
-    other = torch.norm(sensors[:, [2, 3, 5]], dim=1) / np.sqrt(3.0)
-
-    on_pad = obs[:, 0].abs() < LANDING_X_RADIUS
-
     # engines_off = obs[:, 9] > 0.5
     # left_bonus = LANDING_BONUS * ((obs[:, 6] > 0.5) & on_pad).float()
     # right_bonus = LANDING_BONUS * ((obs[:, 7] > 0.5) & on_pad).float()
 
-    reward = x * y * a * other
+    y = sensors[..., 1:2]
+    sensors = torch.cat([sensors[..., :2], sensors[..., 2:6] * y], dim=-1)
+
+    on_pad = obs[:, 0].abs() < LANDING_X_RADIUS
+
+    # reward = torch.norm(sensors, dim=1) / np.sqrt(6.0)
+    reward = torch.prod(sensors, dim=1)
     reward = torch.where(done & ~on_pad, torch.zeros_like(reward), reward)
     return reward
 
