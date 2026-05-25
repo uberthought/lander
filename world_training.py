@@ -35,7 +35,7 @@ def _is_done(state, t, max_steps):
     return False
 
 
-def _run_imaginary_episode(seed_state, actor_model, world_model, max_steps=1000):
+def run_imaginary_episode(seed_state, actor_model, world_model, max_steps=1000):
     transitions = []
     prev_state = seed_state.copy()
     t = 0
@@ -133,7 +133,7 @@ def train(seconds, rollout_steps, eval_episodes, sample_size):
 
         seed_state = np.array(replay_buffer.sample(1)[0].next_state, dtype=np.float32)
 
-        transitions = _run_imaginary_episode(
+        transitions = run_imaginary_episode(
             seed_state=seed_state,
             actor_model=actor_model,
             world_model=world_model,

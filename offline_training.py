@@ -1,5 +1,8 @@
-import numpy as np
 import argparse
+import time
+
+import numpy as np
+import torch
 
 from ReplayBuffer import ReplayBuffer
 from actor import ActorModel
@@ -9,7 +12,6 @@ from world import WorldModel
 WORLD_DIM_LABELS = ['x', 'y', 'vx', 'vy', 'ang', 'vang', 'lLeg', 'rLeg', 'done', 'a0', 'a1', 'a2', 'a3']
 
 def compute_world_value_snr(world_model, validation_sample):
-    import torch
     states_0 = np.array([obs.prev_state for obs in validation_sample], dtype=np.float32)
     states_1 = np.array([obs.next_state for obs in validation_sample], dtype=np.float32)
     actions = np.array([int(obs.action) for obs in validation_sample], dtype=np.int64)
@@ -32,7 +34,6 @@ def compute_world_value_snr(world_model, validation_sample):
 
 
 def compute_world_per_dim_snr(world_model, validation_sample):
-    import torch
     states_0 = np.array([obs.prev_state for obs in validation_sample], dtype=np.float32)
     states_1 = np.array([obs.next_state for obs in validation_sample], dtype=np.float32)
     actions = np.array([int(obs.action) for obs in validation_sample], dtype=np.int64)
@@ -61,26 +62,18 @@ def print_snr(world_model, training_sample, remain_time=None, actor_model=None):
     per_dim_str = ' '.join(f"{label}={snr:.1f}" for label, snr in per_dim)
     sections = [f"World SNR={v_snr:.1f} {per_dim_str}"]
     if actor_model is not None:
-        sections.append(_actor_stats_str(actor_model, training_sample))
+        sections.append(actor_stats_str(actor_model, training_sample))
     print(prefix + ' | '.join(sections))
 
 
-def _actor_stats_str(actor_model, training_sample):
-    import torch
+def actor_stats_str(actor_model, training_sample):
     actor_model.model.eval()
     with torch.no_grad():
-        prediction, targets = actor_model._compute_prediction_and_targets(training_sample)
+        prediction, targets = actor_model.compute_prediction_and_targets(training_sample)
 
-    def _stats(label, pred, tgt, show_means):
-        mse = torch.mean((pred - tgt) ** 2).item()
-        signal = torch.mean(tgt ** 2).item()
-        snr = 0.0 if mse == 0 or signal == 0 else 10 * np.log10(signal / mse)
-        base = f"{label} SNR={snr:.1f}"
-        if show_means:
-            base += f" pred={pred.mean().item():+.3f} tgt={tgt.mean().item():+.3f}"
-        return base
-
-    return _stats("Actor-Q", prediction[:, 0], targets[:, 0], show_means=True)
+    pred = prediction[:, 0]
+    tgt = targets[:, 0]
+    return f"Actor-Q pred={pred.mean().item():+.3f} tgt={tgt.mean().item():+.3f}"
 
 
 def main():
@@ -98,7 +91,6 @@ def main():
     world_model = WorldModel()
     actor_model = ActorModel()
 
-    import time
     start_time = time.time()
     i = 0
     fixed_sample = replay_buffer.sample(2**sample_size) if args.fixed_batch else None

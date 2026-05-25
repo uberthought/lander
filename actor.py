@@ -93,7 +93,7 @@ class ActorModel:
                 print(f"Starting fresh actor with random weights (will save to {self.model_path}).")
             self.model.to(self.device)
 
-    def _compute_prediction_and_targets(self, observations):
+    def compute_prediction_and_targets(self, observations):
         actions = torch.tensor([int(obs.action) for obs in observations], dtype=torch.long, device=self.device)
         states_0_full = torch.tensor(np.array([obs.prev_state for obs in observations]), dtype=torch.float32, device=self.device)
         states_1_full = torch.tensor(np.array([obs.next_state for obs in observations]), dtype=torch.float32, device=self.device)

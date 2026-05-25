@@ -8,7 +8,7 @@ import torch
 from gymnasium.wrappers import RecordVideo
 
 from actor import ActorModel
-from actor_training import _step_action
+from actor_training import step_action
 from observation import calculate_reward
 
 
@@ -31,7 +31,7 @@ def play(model_path, episodes, video_folder):
             while not done:
                 t += 1
                 action = actor_model.get_best_action(prev_state)
-                next_state, done = _step_action(action, env)
+                next_state, done = step_action(action, env)
                 prev_state = next_state
 
             video_path = f"{video_folder}/{env._video_name}.mp4"

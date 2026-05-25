@@ -11,8 +11,8 @@ from observation import create_observation, is_done_state, calculate_reward, cli
 from ReplayBuffer import ReplayBuffer
 from actor import ActorModel
 from world import WorldModel
-from world_training import _run_imaginary_episode
-from offline_training import _actor_stats_str, print_snr
+from world_training import run_imaginary_episode
+from offline_training import actor_stats_str, print_snr
 
 import time
 
@@ -123,7 +123,7 @@ def train(env, seconds, train_every_n_episodes, video_folder):
                     # replay_buffer.sample(1)[0].next_state, dtype=np.float32
                     replay_buffer0[i].next_state, dtype=np.float32
                 )
-                transitions = _run_imaginary_episode(
+                transitions = run_imaginary_episode(
                     seed_state=seed_state,
                     actor_model=actor_model,
                     world_model=world_model,

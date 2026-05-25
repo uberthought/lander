@@ -11,7 +11,7 @@ from observation import create_observation, is_done_state, calculate_reward, cli
 from ReplayBuffer import ReplayBuffer
 from actor import ActorModel
 from world import WorldModel
-from offline_training import _actor_stats_str, print_snr
+from offline_training import actor_stats_str, print_snr
 
 import time
 

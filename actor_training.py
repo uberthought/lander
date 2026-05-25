@@ -10,7 +10,7 @@ from collections import deque
 from observation import create_observation, is_done_state, calculate_reward, clip_state
 from ReplayBuffer import ReplayBuffer
 from actor import ActorModel
-from offline_training import _actor_stats_str
+from offline_training import actor_stats_str
 
 import time
 
@@ -23,9 +23,9 @@ def print_actor_snr(actor_model, sample, remain_time=None):
     prefix = ''
     if remain_time is not None:
         prefix = f"Iter t={remain_time:.0f}s "
-    print(prefix + _actor_stats_str(actor_model, sample))
+    print(prefix + actor_stats_str(actor_model, sample))
 
-def _step_action(action, env):
+def step_action(action, env):
     if action == 0:
         action0 = np.array([0.0, 0.0], dtype=np.float32)
     elif action == 1:
@@ -71,7 +71,7 @@ def train(env, seconds, train_every_n_episodes, video_folder):
         while not done:
             t += 1
             action = actor_model.get_best_action(prev_state)
-            next_state, done = _step_action(action, env)
+            next_state, done = step_action(action, env)
 
             transition = create_observation(prev_state, action, next_state)
             replay_buffer.add(transition)

@@ -1,9 +1,12 @@
 import os
+from collections import namedtuple
 from typing import List, Tuple
 import random
 import numpy as np
 
 from configuration import STATE_SIZE
+
+Observation = namedtuple('Observation', ['prev_state', 'action', 'next_state'])
 
 class ReplayBuffer:
     """Memory-mapped cyclic buffer with automatic disk persistence.
@@ -168,12 +171,6 @@ class ReplayBuffer:
         samples = []
         for idx in indices:
             obs = self.buffer[idx]
-            # Create a simple object to mimic namedtuple behavior
-            class Observation:
-                def __init__(self, prev_state, action, next_state):
-                    self.prev_state = prev_state
-                    self.action = action
-                    self.next_state = next_state
             samples.append(Observation(obs['prev_state'], obs['action'], obs['next_state']))
         return samples
 
@@ -190,12 +187,6 @@ class ReplayBuffer:
         samples = []
         for i in sampled_indices:
             obs = self.buffer[i]
-            # Create a simple object to mimic namedtuple behavior
-            class Observation:
-                def __init__(self, prev_state, action, next_state):
-                    self.prev_state = prev_state
-                    self.action = action
-                    self.next_state = next_state
             samples.append(Observation(obs['prev_state'], obs['action'], obs['next_state']))
 
         return samples
@@ -208,11 +199,6 @@ class ReplayBuffer:
         valid_indices = self._get_valid_indices()
         for i in valid_indices:
             obs = self.buffer[i]
-            class Observation:
-                def __init__(self, prev_state, action, next_state):
-                    self.prev_state = prev_state
-                    self.action = action
-                    self.next_state = next_state
             yield Observation(obs['prev_state'], obs['action'], obs['next_state'])
 
     # --- persistence ---
