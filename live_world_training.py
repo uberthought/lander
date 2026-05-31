@@ -116,18 +116,16 @@ def train(env, seconds, train_every_n_episodes, video_folder):
                 training_sample = replay_buffer.sample(sample_len) + replay_buffer0
                 world_model.train(training_sample)
 
-            # Step 2: collect `episodes` imagined transitions, then train actor on them
+            # Step 2: pick 8 random events from the main buffer as seeds; imagine one 100-step episode each
             imagined_transitions = []
-            for i in range(len(replay_buffer0)):
-                seed_state = np.array(
-                    replay_buffer.sample(1)[0].next_state, dtype=np.float32
-                    # replay_buffer0[i].next_state, dtype=np.float32
-                )
+            seeds = replay_buffer.sample(1)
+            for obs in seeds:
+                seed_state = np.array(obs.next_state, dtype=np.float32)
                 transitions = run_imaginary_episode(
                     seed_state=seed_state,
                     actor_model=actor_model,
                     world_model=world_model,
-                    max_steps=4,
+                    max_steps=100,
                 )
                 imagined_transitions.extend(transitions)
 

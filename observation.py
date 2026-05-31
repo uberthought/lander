@@ -24,6 +24,10 @@ FAILURE_Y_MIN = -0.5  # below ground / off the bottom of the operational envelop
 FAILURE_Y_MAX = 2.0   # above the operational ceiling
 LANDING_BONUS = 0.5      # per-step bonus when leg(s) on pad
 LANDING_X_RADIUS = 0.3   # x distance from centerline that counts as "on pad"
+# Altitude below which a leg is treated as touching ground in imaginary rollouts
+# (real legs come from gym sensors). Derived empirically from replay-buffer
+# leg-flip transitions: ~90% of real contacts occur at y < 0.05.
+LEG_TOUCH_Y = 0.05
 
 
 def is_done_state(state):
@@ -35,8 +39,8 @@ def is_done_state(state):
     if y < FAILURE_Y_MIN or y > FAILURE_Y_MAX:
         return True
     # Any legs touching the ground (landed).
-    # if float(state[6]) > 0.5 or float(state[7]) > 0.5:
-    #     return True
+    if float(state[6]) > 0.5 or float(state[7]) > 0.5:
+        return True
     return False
 
 

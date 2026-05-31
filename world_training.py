@@ -5,7 +5,7 @@ import torch
 import gymnasium as gym
 from collections import deque
 
-from observation import create_observation, calculate_reward, is_done_state
+from observation import create_observation, calculate_reward, is_done_state, LEG_TOUCH_Y
 from ReplayBuffer import ReplayBuffer
 from world import WorldModel
 from actor import ActorModel
@@ -45,6 +45,11 @@ def run_imaginary_episode(seed_state, actor_model, world_model, max_steps=1000):
         action = actor_model.get_best_action(prev_state)
         next_state = prev_state.copy()
         next_state[:6] = world_model.predict(prev_state, action)[:6]
+        # Legs are not sensors in imagination: synthesize ground contact from
+        # altitude. Both legs set together (geometry can't distinguish L/R).
+        contact = next_state[1] < LEG_TOUCH_Y
+        next_state[6] = 1.0 if contact else 0.0
+        next_state[7] = 1.0 if contact else 0.0
         next_state = _clamp_state(next_state)
         done = _is_done(next_state, t, max_steps)
         next_state[8] = float(done)
