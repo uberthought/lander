@@ -8,6 +8,6 @@ NODE_COUNT = 256 # Number of nodes per layer
 WORLD_LOSS_DELTA = 1.0 # Huber loss delta for WorldModel
 BOOL_LOSS_WEIGHT = 1.0 # Weight of the BCE term vs Huber in WorldModel total loss
 
-DISCOUNT_FACTOR = 0.997 # Actor Q-learning discount factor (gamma)
+DISCOUNT_FACTOR = 0.97 # Actor Q-learning discount factor (gamma)
 TAU = 0.05 # Polyak averaging rate for ActorModel.target_model
 ACTION_SHARPENING = 100 # Softmax temperature multiplier in get_best_action sharpening trick

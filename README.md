@@ -60,7 +60,7 @@ bash clean.sh                                                # wipes checkpoints
 | `LAYER_COUNT` | 16 | Number of `SkipBlock`s |
 | `NODE_COUNT` | 64 | Hidden width |
 
-`DISCOUNT_FACTOR = 0.997`, target-network `TAU = 0.05`, `ACTION_SHARPENING = 100`, `WORLD_LOSS_DELTA = 1.0` (Huber delta for `WorldModel`'s continuous head), and `BOOL_LOSS_WEIGHT = 1.0` (multiplier on the BCE term in `WorldModel`'s total loss) all live in `configuration.py`.
+`DISCOUNT_FACTOR = 0.97`, target-network `TAU = 0.05`, `ACTION_SHARPENING = 100`, `WORLD_LOSS_DELTA = 1.0` (Huber delta for `WorldModel`'s continuous head), and `BOOL_LOSS_WEIGHT = 1.0` (multiplier on the BCE term in `WorldModel`'s total loss) all live in `configuration.py`.
 
 ## Understanding Training Output
 

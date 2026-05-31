@@ -85,7 +85,7 @@ target_full_Q = r(s₁) + [γ · r(s₁) − r(s₀)] + γ · max_a' Q(s₁, a')
 target_full_Q = r(s₁)                                                # terminal (done flag set)
 ```
 
-with `DISCOUNT_FACTOR = 0.997` (`configuration.py`, read into `self.discount_factor` at `actor.py:50`). The reward function stays explicit on the `s₁` side; the bootstrap absorbs the shaping potential `γ·r(s₁) − r(s₀)`. Loss is Smooth L1 / Huber via `F.smooth_l1_loss(pred, target)` (`actor.py:144`).
+with `DISCOUNT_FACTOR = 0.97` (`configuration.py`, read into `self.discount_factor` at `actor.py:50`). The reward function stays explicit on the `s₁` side; the bootstrap absorbs the shaping potential `γ·r(s₁) − r(s₀)`. Loss is Smooth L1 / Huber via `F.smooth_l1_loss(pred, target)` (`actor.py:144`).
 
 **Target network.** `ActorModel` keeps a frozen `target_model` updated by Polyak averaging with `TAU = 0.05` (`configuration.py`) after every gradient step (`actor.py:57-63, 149-150`). The `max_a' Q(s₁, a')` term above is evaluated against `target_model`, not the online net (`actor.py:103, 133`).
 
@@ -124,7 +124,7 @@ Per-cycle output is one line via `print_actor_snr` (`Iter t=Xs Actor-Q SNR=… p
 | `NODE_COUNT` | 64 | Hidden width |
 | `WORLD_LOSS_DELTA` | 1.0 | Huber-loss `delta` for `WorldModel` continuous head (`world.py:64`) |
 | `BOOL_LOSS_WEIGHT` | 1.0 | Multiplier on the BCE term in `WorldModel`'s total loss (`world.py:111`) |
-| `DISCOUNT_FACTOR` | 0.997 | Actor Q-learning discount factor γ (`actor.py:50`) |
+| `DISCOUNT_FACTOR` | 0.97 | Actor Q-learning discount factor γ (`actor.py:50`) |
 | `TAU` | 0.05 | Polyak averaging rate for `ActorModel.target_model` (`actor.py:63, 149-150`) |
 | `ACTION_SHARPENING` | 100 | Softmax temperature multiplier in `get_best_action` (`actor.py:180`) |
 
