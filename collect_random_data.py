@@ -1,29 +1,12 @@
-import gymnasium as gym
 import numpy as np
 import os
 import shutil
 import argparse
-from observation import create_observation, is_done_state
+from observation import create_observation
 from ReplayBuffer import ReplayBuffer
+from env import step_action, reset_state, make_env
 
 from configuration import POSSIBLE_ACTIONS
-
-def step_action(action, env):
-    if action == 0:
-        action0 = np.array([0.0, 0.0], dtype=np.float32)
-    elif action == 1:
-        action0 = np.array([0.0, 1.0], dtype=np.float32)
-    elif action == 2:
-        action0 = np.array([1.0, 0.0], dtype=np.float32)
-    elif action == 3:
-        action0 = np.array([0.0, -1.0], dtype=np.float32)
-    next_state, _, done, truncated, _ = env.step(action0)
-    done = done or truncated or is_done_state(next_state)
-    onehot = np.zeros(POSSIBLE_ACTIONS, dtype=np.float32)
-    onehot[action] = 1.0
-    next_state = np.concatenate((next_state, [float(done)], onehot))
-
-    return next_state, done
 
 def collect(env, episodes, video_folder):
     replay_buffer = ReplayBuffer()
@@ -34,8 +17,7 @@ def collect(env, episodes, video_folder):
         replay_buffer.increment_episode()
         done = False
         truncated = False
-        prev_state, _ = env.reset()
-        prev_state = np.concatenate((prev_state, [0.0, 1.0, 0.0, 0.0, 0.0]))
+        prev_state = reset_state(env)
 
         while not done and not truncated:
             action = np.random.randint(0, POSSIBLE_ACTIONS)
@@ -56,7 +38,7 @@ def main():
     parser.add_argument("--episodes", type=int, default=256, help="Number of episodes to collect")
     episodes = parser.parse_args().episodes
     np.set_printoptions(formatter={'float': lambda x: "{0:+0.4f}".format(x)})
-    env = gym.make("LunarLander-v3", continuous=True, render_mode="rgb_array")
+    env = make_env()
     collect(env, episodes, video_folder="./videos")
     env.close()
 

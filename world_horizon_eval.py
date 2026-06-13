@@ -2,13 +2,12 @@ import argparse
 import csv
 import numpy as np
 import torch
-import gymnasium as gym
-
 from observation import calculate_reward, clip_state, is_done_state
 from world import WorldModel
 from actor import ActorModel
-from configuration import POSSIBLE_ACTIONS
-from world_training import _step_action, _clamp_state, _is_done
+from env import step_action, reset_state, make_env
+from configuration import POSSIBLE_ACTIONS, ACTOR_MODEL_PATH
+from rollout import _clamp_state, _is_done
 
 
 DIM_NAMES = ["x", "y", "vx", "vy", "angle", "vangle"]
@@ -17,13 +16,12 @@ DIM_NAMES = ["x", "y", "vx", "vy", "angle", "vangle"]
 def collect_real_episode(actor_model, env):
     states = []
     actions = []
-    prev_state, _ = env.reset()
-    prev_state = np.concatenate((prev_state, [0.0, 1.0, 0.0, 0.0, 0.0])).astype(np.float32)
+    prev_state = reset_state(env).astype(np.float32)
     states.append(prev_state.copy())
     done = False
     while not done:
         action = actor_model.get_best_action(prev_state)
-        prev_state, done = _step_action(action, env)
+        prev_state, done = step_action(action, env)
         prev_state = prev_state.astype(np.float32)
         actions.append(int(action))
         states.append(prev_state.copy())
@@ -55,10 +53,10 @@ def _reward_scalar(state):
 
 
 def evaluate(episodes, horizon, stride, output_path):
-    actor_model = ActorModel(model_path="checkpoints/actor_model.pt", load=True)
+    actor_model = ActorModel(model_path=ACTOR_MODEL_PATH, load=True)
     world_model = WorldModel()
 
-    env = gym.make("LunarLander-v3", continuous=True)
+    env = make_env(render_mode=None)
 
     # Accumulators per step offset k=1..horizon
     cont_abs_sum = np.zeros((horizon, 6), dtype=np.float64)

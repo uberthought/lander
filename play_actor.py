@@ -2,21 +2,19 @@ import argparse
 import os
 import shutil
 
-import gymnasium as gym
 import numpy as np
 import torch
-from gymnasium.wrappers import RecordVideo
 
 from actor import ActorModel
-from actor_training import step_action
+from env import step_action, reset_state, make_env
 from observation import calculate_reward
+from configuration import ACTOR_WORLD_MODEL_PATH
 
 
 def play(model_path, episodes, video_folder):
     shutil.rmtree(video_folder, ignore_errors=True)
 
-    env = gym.make("LunarLander-v3", continuous=True, render_mode="rgb_array")
-    env = RecordVideo(env, video_folder=video_folder, episode_trigger=lambda x: True, disable_logger=True)
+    env = make_env(record=True, video_folder=video_folder)
 
     actor_model = ActorModel(model_path=model_path, load=True)
 
@@ -25,8 +23,7 @@ def play(model_path, episodes, video_folder):
             done = False
             t = 0
 
-            prev_state, _ = env.reset()
-            prev_state = np.concatenate((prev_state, [0.0, 1.0, 0.0, 0.0, 0.0]))
+            prev_state = reset_state(env)
 
             while not done:
                 t += 1
@@ -61,7 +58,7 @@ def main():
     parser = argparse.ArgumentParser(description="Run a saved actor checkpoint on LunarLander-v3 and record video.")
     parser.add_argument("--episodes", type=int, default=10, help="Number of episodes to record")
     parser.add_argument("--video-folder", type=str, default="./videos", help="Folder to write MP4 files to")
-    parser.add_argument("--model-path", type=str, default="checkpoints/actor_model_world.pt", help="Path to actor checkpoint")
+    parser.add_argument("--model-path", type=str, default=ACTOR_WORLD_MODEL_PATH, help="Path to actor checkpoint")
     args = parser.parse_args()
 
     np.set_printoptions(formatter={'float': lambda x: "{0:+0.4f}".format(x)})

@@ -7,7 +7,7 @@ _disabled = False
 
 def _make_plotter():
     import matplotlib.pyplot as plt
-    from offline_training import WORLD_DIM_LABELS
+    from metrics import WORLD_DIM_LABELS
 
     plt.ion()
     fig, axes = plt.subplots(3, 1, figsize=(10, 9))

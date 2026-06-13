@@ -6,7 +6,7 @@ import numpy as np
 import os
 import tempfile
 
-from configuration import POSSIBLE_ACTIONS, LAYER_COUNT, NODE_COUNT, WORLD_LOSS_DELTA, BOOL_LOSS_WEIGHT, STATE_SIZE
+from configuration import POSSIBLE_ACTIONS, LAYER_COUNT, NODE_COUNT, WORLD_LOSS_DELTA, BOOL_LOSS_WEIGHT, STATE_SIZE, WORLD_MODEL_PATH, WORLD_LR
 from observation import clip_state
 
 
@@ -36,32 +36,47 @@ class WorldNet(nn.Module):
     def __init__(self, action_dim, nodes, layers):
         super().__init__()
         self.layers = layers
-        self.sensors_input = nn.Linear(STATE_SIZE, nodes)
-        self.action_input = nn.Linear(action_dim, nodes)
-        self.skip_layers = nn.ModuleList([SkipBlock(nodes) for _ in range(layers)])
-        self.output = nn.Linear(nodes, STATE_SIZE)
+        # Continuous-dynamics trunk: predicts the 6-dim next-state delta.
+        self.cont_sensors_input = nn.Linear(STATE_SIZE, nodes)
+        self.cont_action_input = nn.Linear(action_dim, nodes)
+        self.cont_skip_layers = nn.ModuleList([SkipBlock(nodes) for _ in range(layers)])
+        self.cont_output = nn.Linear(nodes, 6)
+        # Boolean trunk: predicts the 7 boolean-dim logits. Kept fully separate so its
+        # (dominant) gradient cannot drag the continuous representation.
+        self.bool_sensors_input = nn.Linear(STATE_SIZE, nodes)
+        self.bool_action_input = nn.Linear(action_dim, nodes)
+        self.bool_skip_layers = nn.ModuleList([SkipBlock(nodes) for _ in range(layers)])
+        self.bool_output = nn.Linear(nodes, STATE_SIZE - 6)
 
     def forward(self, state, action):
-        sensors_embed = self.sensors_input(state)
-        action_embed = self.action_input(action)
-        x = sensors_embed + action_embed
+        c = self.cont_sensors_input(state) + self.cont_action_input(action)
         for i in range(self.layers):
-            x = self.skip_layers[i](x)
-        x = self.output(x)
-        return x
+            c = self.cont_skip_layers[i](c)
+        c = self.cont_output(c)
+        b = self.bool_sensors_input(state) + self.bool_action_input(action)
+        for i in range(self.layers):
+            b = self.bool_skip_layers[i](b)
+        b = self.bool_output(b)
+        return torch.cat([c, b], dim=-1)
         
 
 class WorldModel:
-    def __init__(self, model_path="checkpoints/world_model.pt"):
+    def __init__(self, model_path=WORLD_MODEL_PATH):
         self.model_path = model_path
 
         self.device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 
         self.model = WorldNet(POSSIBLE_ACTIONS, NODE_COUNT, LAYER_COUNT)
-        self.optimizer = optim.AdamW(self.model.parameters(), lr=0.001)
+        self.optimizer = optim.AdamW(self.model.parameters(), lr=WORLD_LR)
         # Output is interpreted as: [:, :6] continuous next-state delta, [:, 6:13] logits for boolean dims.
         self.cont_criterion = nn.HuberLoss(delta=WORLD_LOSS_DELTA)
         self.bool_criterion = nn.BCEWithLogitsLoss()
+
+        # Running sums of the two training-loss terms since the last pop_loss_stats().
+        self._cont_sum = 0.0
+        self._cont_steps = 0
+        self._bool_sum = 0.0
+        self._bool_steps = 0
 
         if os.path.exists(self.model_path):
             checkpoint = torch.load(self.model_path, map_location="mps" if torch.backends.mps.is_available() else "cpu")
@@ -106,11 +121,28 @@ class WorldModel:
             cont_delta = (states_1_clipped[cont_mask, :6] - states_0_clipped[cont_mask, :6])
             cont_loss = self.cont_criterion(prediction[cont_mask, :6], cont_delta)
             loss = cont_loss + BOOL_LOSS_WEIGHT * bool_loss
+            self._cont_sum += cont_loss.item()
+            self._cont_steps += 1
         else:
             loss = BOOL_LOSS_WEIGHT * bool_loss
 
+        # Track both loss terms so the ratio (bool vs continuous) is observable.
+        self._bool_sum += bool_loss.item()
+        self._bool_steps += 1
+
         loss.backward()
         self.optimizer.step()
+
+    def pop_loss_stats(self):
+        # Mean of each loss term since the last call; resets the accumulators.
+        cont = self._cont_sum / self._cont_steps if self._cont_steps else float('nan')
+        bool_ = self._bool_sum / self._bool_steps if self._bool_steps else float('nan')
+        ratio = bool_ / cont if self._cont_steps and cont != 0 else float('nan')
+        self._cont_sum = 0.0
+        self._cont_steps = 0
+        self._bool_sum = 0.0
+        self._bool_steps = 0
+        return cont, bool_, ratio
 
 
     def save(self):
